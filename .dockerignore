@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.eggs
+*.egg
+.venv
+venv
+env
+
+# Data and outputs (large files)
+data/
+outputs/
+logs/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Misc
+.DS_Store
+*.log

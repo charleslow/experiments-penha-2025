@@ -71,84 +71,11 @@ This paper investigates how to construct Semantic IDs that work well for **both 
 | Train/Test Split | Chronological (last interaction per user for test) |
 | Queries | 20 per item (10 train / 10 test), generated with Gemini-2.0-flash |
 
----
-
-## Cloud Platform Recommendation: RunPod
-
-### Why RunPod over Lightning AI?
-
-| Factor | RunPod | Lightning AI |
-|--------|--------|--------------|
-| **Pricing** | $0.22-0.44/hr (RTX 3090/4090) | Higher, enterprise-focused |
-| **Flexibility** | Raw GPU access, any framework | Opinionated workflow |
-| **Cold starts** | Sub-200ms | Slower |
-| **Data egress** | Free | Standard cloud fees |
-| **Best for** | ML research, experimentation | Production ML pipelines |
-
-### Recommended GPU Configurations
-
-| Run Type | GPU | VRAM | Cost/hr | Notes |
-|----------|-----|------|---------|-------|
-| **Dev** | RTX 3090 | 24GB | ~$0.22 (community) | Sufficient for small models |
-| **Full** | RTX A6000 | 48GB | ~$0.79 | Or 2x RTX 3090 |
-| **Full (fast)** | A100 80GB | 80GB | ~$1.64 | Single GPU, no sharding needed |
-
-### RunPod Setup
-
-```bash
-# 1. Create pod with PyTorch template
-#    - Select GPU: RTX 3090 (dev) or A6000/A100 (full)
-#    - Disk: 50GB (dev) or 200GB (full)
-#    - Template: RunPod PyTorch 2.1
-
-# 2. SSH into pod
-ssh root@<pod-ip> -i ~/.ssh/runpod
-
-# 3. Clone and setup
-git clone https://github.com/snap-research/GRID.git
-cd GRID
-pip install -r requirements.txt
-
-# 4. Install additional dependencies for this replication
-pip install sentence-transformers wandb
-```
-
----
-
 ## GRID Framework Setup
 
-### Step 1: Clone and Install
+We build off GRID from snapchat, and add functionalities that we need.
 
-```bash
-git clone https://github.com/snap-research/GRID.git
-cd GRID
-pip install -r requirements.txt
-
-# Additional dependencies
-pip install sentence-transformers==2.2.2
-pip install wandb  # For experiment tracking
-```
-
-### Step 2: GRID Directory Structure
-
-```
-GRID/
-├── src/
-│   ├── train.py           # Main training entry point
-│   ├── inference.py       # Inference entry point
-│   ├── models/
-│   │   ├── rkmeans.py     # RQ-KMeans implementation
-│   │   ├── rqvae.py       # RQ-VAE implementation
-│   │   └── tiger.py       # TIGER recommendation model
-│   └── data/
-│       └── dataset.py     # Data loading
-├── configs/
-│   └── experiment/        # Hydra configs
-└── data/
-    └── amazon_data/       # Example data format
-```
-
-### Step 3: Modifications Needed for Penha Replication
+### Modifications Needed for Penha Replication
 
 GRID is designed for recommendation only. We need to add:
 
@@ -260,93 +187,6 @@ resources:
   num_workers: 16
 ```
 
-**Full run specs:**
-- GPU: A100 80GB (~$1.64/hr) or 2x A6000 48GB (~$1.58/hr)
-- Time: ~8-18 hours
-- Cost: ~$15-30
-
----
-
-## Working with Claude in Dev Environment
-
-### Recommended Workflow for Auto-Correction
-
-#### Option 1: Claude Code CLI (Recommended)
-
-Run Claude Code directly in your RunPod terminal:
-
-```bash
-# Install Claude Code
-npm install -g @anthropic-ai/claude-code
-
-# Run in your project directory
-cd /workspace/GRID
-claude
-
-# Claude can now:
-# - Read error messages and fix code
-# - Run experiments and analyze results
-# - Iterate on failing tests
-```
-
-**Best practices:**
-```bash
-# 1. Keep a terminal with training running
-python src/train.py experiment=dev 2>&1 | tee logs/train.log
-
-# 2. In another terminal, run Claude Code
-claude
-
-# 3. Ask Claude to monitor and fix issues:
-#    "Watch logs/train.log and fix any errors"
-#    "The training crashed with OOM, reduce batch size"
-#    "Analyze the results in outputs/ and suggest improvements"
-```
-
-#### Option 2: VSCode + Claude Extension
-
-1. Install VSCode Remote SSH extension
-2. Connect to RunPod via SSH
-3. Install Claude extension in VSCode
-4. Claude can see your code and terminal output
-
-#### Option 3: Structured Error Feedback Loop
-
-Create a script that captures errors for Claude:
-
-```bash
-#!/bin/bash
-# scripts/run_with_feedback.sh
-
-set -o pipefail
-
-python src/train.py experiment=$1 2>&1 | tee logs/run.log
-
-if [ $? -ne 0 ]; then
-    echo "=== RUN FAILED ===" >> logs/run.log
-    echo "Error occurred. Check logs/run.log"
-    # Optionally: call Claude API to analyze error
-fi
-```
-
-### Claude-Friendly Project Structure
-
-```
-experiments-penha-2025/
-├── .claude/
-│   └── settings.json        # Claude Code settings
-├── logs/
-│   ├── train.log            # Training logs (Claude can read)
-│   ├── errors.log           # Error logs for debugging
-│   └── results.json         # Metrics (Claude can analyze)
-├── scripts/
-│   ├── run_dev.sh           # Simple entry points
-│   ├── run_full.sh
-│   └── validate.sh          # Quick validation script
-└── tests/
-    └── test_pipeline.py     # Tests Claude can run
-```
-
 ### Auto-Correction Patterns
 
 **Pattern 1: Test-Driven Development**
@@ -364,14 +204,6 @@ python scripts/validate.py --step data_loading
 python scripts/validate.py --step embedding_generation
 python scripts/validate.py --step semantic_id
 python scripts/validate.py --step training
-```
-
-**Pattern 3: Error-Specific Prompts**
-```
-# When you see an error, paste it to Claude with context:
-"I got this error when running the embedding generation step:
-[paste error]
-The relevant code is in src/models/biencoder.py. Please fix it."
 ```
 
 ### Recommended Claude Code Settings
@@ -419,25 +251,6 @@ The relevant code is in src/models/biencoder.py. Please fix it."
 
 ## Step-by-Step Replication Guide
 
-### Phase 1: Environment Setup
-
-```bash
-# On RunPod or local machine
-git clone https://github.com/snap-research/GRID.git
-cd GRID
-
-# Create conda environment
-conda create -n penha python=3.10
-conda activate penha
-
-# Install dependencies
-pip install -r requirements.txt
-pip install sentence-transformers==2.2.2 wandb
-
-# Verify GPU
-python -c "import torch; print(torch.cuda.is_available())"
-```
-
 ### Phase 2: Data Preparation
 
 ```bash
@@ -457,38 +270,6 @@ python src/data/query_gen.py \
 python src/data/prepare_splits.py \
   --interactions data/ml-25m/ratings.csv \
   --output data/splits/
-```
-
-### Phase 3: Run Dev Experiment (Validate Pipeline)
-
-```bash
-# Quick validation with small data
-python src/train.py experiment=dev
-
-# Check outputs
-ls outputs/dev/
-# Should see: embeddings/, semantic_ids/, checkpoints/, results/
-```
-
-### Phase 4: Run Full Experiments
-
-```bash
-# Run all embedding strategies
-for strategy in search rec multitask fused separate; do
-  python src/train.py \
-    experiment=full \
-    embedding.strategy=$strategy \
-    wandb.name="penha_${strategy}"
-done
-
-# Run discretization ablation
-for method in rq_kmeans rq_vae; do
-  python src/train.py \
-    experiment=full \
-    embedding.strategy=multitask \
-    semantic_id.method=$method \
-    wandb.name="penha_multitask_${method}"
-done
 ```
 
 ### Phase 5: Analyze Results
@@ -531,21 +312,6 @@ python scripts/plot_results.py --output outputs/figures/
 
 **Key finding**: Multi-task provides best trade-off without doubling token budget.
 
----
-
-## Cost Estimation
-
-| Phase | Dev (RTX 3090) | Full (A100) |
-|-------|----------------|-------------|
-| Data prep | Free | Free |
-| Embedding training | ~$0.10 | ~$3.00 |
-| Semantic ID | ~$0.02 | ~$0.50 |
-| Generative training | ~$0.15 | ~$10.00 |
-| Evaluation | ~$0.02 | ~$1.00 |
-| **Total per run** | **~$0.30** | **~$15.00** |
-| **Full ablation (7 runs)** | **~$2.00** | **~$100.00** |
-
----
 
 ## Common Issues & Solutions
 
@@ -559,47 +325,6 @@ python scripts/plot_results.py --output outputs/figures/
 
 ---
 
-## Dependencies
-
-```txt
-# requirements.txt
-torch>=2.0
-transformers>=4.35
-sentence-transformers>=2.2.2
-faiss-gpu>=1.7.4
-
-# Data
-pandas>=2.0
-numpy>=1.24
-scipy>=1.10
-
-# Config & Logging
-hydra-core>=1.3
-wandb>=0.15
-
-# Training
-accelerate>=0.24
-bitsandbytes>=0.41  # Optional: quantization
-
-# Evaluation
-scikit-learn>=1.3
-```
-
----
-
-## Timeline Estimate
-
-| Phase | Dev | Full |
-|-------|-----|------|
-| Environment setup | 10 min | 10 min |
-| Data prep | 10 min | 30 min |
-| Embedding training | 15 min | 2-4 hrs |
-| Semantic ID construction | 5 min | 30 min |
-| Generative training | 30 min | 4-12 hrs |
-| Evaluation | 5 min | 1 hr |
-| **Total per run** | **~1 hr** | **~8-18 hrs** |
-
----
 
 ## Next Steps
 
