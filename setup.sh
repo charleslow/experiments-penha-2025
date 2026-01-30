@@ -36,7 +36,7 @@ fi
 
 # Install Python dependencies
 echo "Installing Python dependencies..."
-uv pip install --system -r requirements.txt
+uv pip install --system --extra-index-url https://download.pytorch.org/whl/cu124 --index-strategy unsafe-best-match -r requirements.txt
 
 echo ""
 echo "Setup complete!"
