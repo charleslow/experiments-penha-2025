@@ -36,7 +36,7 @@ fi
 
 # Install Python dependencies
 echo "Installing Python dependencies..."
-uv pip install --system -r GRID/requirements.txt
+uv pip install --system -r requirements.txt
 
 echo ""
 echo "Setup complete!"
