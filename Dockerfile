@@ -17,7 +17,9 @@ WORKDIR /app
 COPY GRID/requirements.txt ./requirements.txt
 
 # Install dependencies with uv from the pinned requirements
-RUN uv pip install --system -r requirements.txt
+# PyTorch CUDA packages require the extra index URL
+# Use unsafe-best-match to allow resolving packages from either PyPI or PyTorch index
+RUN uv pip install --system --extra-index-url https://download.pytorch.org/whl/cu124 --index-strategy unsafe-best-match -r requirements.txt
 
 # Copy the rest of the code
 COPY . .
