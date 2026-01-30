@@ -34,6 +34,19 @@ if [ ! -d "$REPO_DIR/GRID" ]; then
     git clone https://github.com/snap-research/GRID.git "$REPO_DIR/GRID"
 fi
 
+# Install Node.js if not present (needed for Claude Code)
+if ! command -v node &> /dev/null; then
+    echo "Installing Node.js..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y nodejs
+fi
+
+# Install Claude Code CLI
+if ! command -v claude &> /dev/null; then
+    echo "Installing Claude Code..."
+    npm install -g @anthropic-ai/claude-code
+fi
+
 # Install Python dependencies
 echo "Installing Python dependencies..."
 uv pip install --system --extra-index-url https://download.pytorch.org/whl/cu124 --index-strategy unsafe-best-match -r requirements.txt
