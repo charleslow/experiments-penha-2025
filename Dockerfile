@@ -1,28 +1,13 @@
 # syntax=docker/dockerfile:1
-FROM python:3.11-slim
+FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
-# Install uv from official image
+# Install uv for fast package management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
 
-# Set working directory
-WORKDIR /app
+# Copy setup script
+COPY setup.sh /setup.sh
+RUN chmod +x /setup.sh
 
-# Copy requirements (already pinned from pip-compile)
-COPY GRID/requirements.txt ./requirements.txt
-
-# Install dependencies with uv from the pinned requirements
-# PyTorch CUDA packages require the extra index URL
-# Use unsafe-best-match to allow resolving packages from either PyPI or PyTorch index
-RUN uv pip install --system --extra-index-url https://download.pytorch.org/whl/cu124 --index-strategy unsafe-best-match -r requirements.txt
-
-# Copy the rest of the code
-COPY . .
-
-# Default command
-CMD ["bash"]
+CMD ["sleep", "infinity"]

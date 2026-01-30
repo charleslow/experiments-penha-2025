@@ -1,30 +1,31 @@
-# Docker Setup Instructions
+# RunPod Setup Instructions
 
-## Build the Docker Image
+## RunPod Template Settings
 
-Replace `yourusername` with your DockerHub username:
+- **Image**: `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04`
+- **Container Start Command**:
+  ```
+  bash -c 'if [ ! -d /workspace/experiments-penha-2025 ]; then git clone https://github.com/charleslow/experiments-penha-2025.git /workspace/experiments-penha-2025; fi && cd /workspace/experiments-penha-2025 && git pull && bash setup.sh && sleep infinity'
+  ```
+- **Environment Variables** (optional):
+  - `GIT_USER_NAME`: Your name for git commits
+  - `GIT_USER_EMAIL`: Your email for git commits
+
+The container will automatically:
+1. Clone the repo (first time only)
+2. Pull latest changes
+3. Run setup.sh (installs uv + dependencies)
+
+## After SSH-ing In
+
+Just `cd /workspace/experiments-penha-2025` and start working.
+
+## Git Credentials
+
+Credentials are cached for 7 days. On first push, you'll be prompted:
 
 ```bash
-docker build -t yourusername/penha-2025:latest .
-```
-
-## Push to DockerHub
-
-1. Login to DockerHub (one time):
-   ```bash
-   docker login
-   ```
-
-2. Push the image:
-   ```bash
-   docker push yourusername/penha-2025:latest
-   ```
-
-## Pull and Run (on RunPod or other cloud)
-
-```bash
-docker pull yourusername/penha-2025:latest
-docker run --gpus all -it yourusername/penha-2025:latest
+git push  # Enter GitHub username and Personal Access Token as password
 ```
 
 ---
