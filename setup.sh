@@ -28,6 +28,12 @@ fi
 
 cd "$REPO_DIR"
 
+# Clone GRID repo if not exists
+if [ ! -d "$REPO_DIR/GRID" ]; then
+    echo "Cloning GRID repository..."
+    git clone https://github.com/snap-research/GRID.git "$REPO_DIR/GRID"
+fi
+
 # Install Python dependencies
 echo "Installing Python dependencies..."
 uv pip install --system -r GRID/requirements.txt
