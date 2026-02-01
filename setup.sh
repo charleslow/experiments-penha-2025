@@ -47,6 +47,13 @@ if ! command -v claude &> /dev/null; then
     npm install -g @anthropic-ai/claude-code
 fi
 
+# Persist Claude credentials across pod restarts (symlink to workspace)
+if [ ! -L ~/.claude ]; then
+    mkdir -p /workspace/.claude
+    rm -rf ~/.claude
+    ln -s /workspace/.claude ~/.claude
+fi
+
 # Install Python dependencies
 echo "Installing Python dependencies..."
 uv pip install --system --extra-index-url https://download.pytorch.org/whl/cu124 --index-strategy unsafe-best-match -r requirements.txt

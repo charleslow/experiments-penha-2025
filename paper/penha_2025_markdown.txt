@@ -1,0 +1,205 @@
+Title: Semantic IDs for Joint Generative Search and Recommendation
+
+URL Source: https://arxiv.org/html/2508.10478v1
+
+Markdown Content:
+(2025)
+
+###### Abstract.
+
+Generative models powered by Large Language Models (LLMs) are emerging as a unified solution for powering both recommendation and search tasks. A key design choice in these models is how to represent items, traditionally through unique identifiers (IDs) and more recently with Semantic IDs composed of discrete codes, obtained from embeddings. While task-specific embedding models can improve performance for individual tasks, they may not generalize well in a joint setting. In this paper, we explore how to construct Semantic IDs that perform well both in search and recommendation when using a unified model. We compare a range of strategies to construct Semantic IDs, looking into task-specific and cross-tasks approaches, and also whether each task should have its own semantic ID tokens in a joint search and recommendation generative model. Our results show that using a bi-encoder model fine-tuned on both search and recommendation tasks to obtain item embeddings, followed by the construction of a unified Semantic ID space provides an effective trade-off, enabling strong performance in both tasks. We hope these findings spark follow-up work on generalisable, semantically grounded ID schemes and inform the next wave of unified generative recommender architectures.
+
+††journalyear: 2025††copyright: rightsretained††conference: Proceedings of the Nineteenth ACM Conference on Recommender Systems; September 22–26, 2025; Prague, Czech Republic††booktitle: Proceedings of the Nineteenth ACM Conference on Recommender Systems (RecSys ’25), September 22–26, 2025, Prague, Czech Republic††doi: 10.1145/3705328.3759300††isbn: 979-8-4007-1364-4/2025/09
+1. Introduction
+---------------
+
+![Image 1: Refer to caption](https://arxiv.org/html/2508.10478v1/x1.png)
+
+Figure 1. Effectiveness of a joint generative model for search an recommendation using different approaches to construct Semantic IDs. We investigate embeddings that take into account both search and recommendation when representing items and constructing Semantic IDs.
+
+Generative models powered by Large Language Models (LLMs) are transforming how we approach both recommendation and search tasks. Rather than building task-specific models, recent work have explored unified generative frameworks that simplify system design and potentially improve generalization across tasks.
+
+In generative models, item representations must be mapped to discrete tokens that LLMs can consume and produce(Palumbo et al., [2025](https://arxiv.org/html/2508.10478v1#bib.bib13); Hua et al., [2023](https://arxiv.org/html/2508.10478v1#bib.bib10); Palumbo et al., [2025](https://arxiv.org/html/2508.10478v1#bib.bib13); Petrov and Macdonald, [2023](https://arxiv.org/html/2508.10478v1#bib.bib16); Doh et al., [2025](https://arxiv.org/html/2508.10478v1#bib.bib5)). Traditional recommender systems often use unique item identifiers (IDs) that are added to the model’s vocabulary, such as in SASRec(Kang and McAuley, [2018](https://arxiv.org/html/2508.10478v1#bib.bib11)), while others use sequential IDs (e.g. P5(Geng et al., [2022](https://arxiv.org/html/2508.10478v1#bib.bib7))) based on heuristics, or less token-efficient solutions such as title of the entities involved(De Cao et al., [2020](https://arxiv.org/html/2508.10478v1#bib.bib4)). Most of these approaches require re-training the model whenever new cold start items are added and fall short in industrial settings.
+
+To address this, recent work have proposed using Semantic IDs, sets of discrete tokens generated from pre-trained item embeddings(Rajput et al., [2023](https://arxiv.org/html/2508.10478v1#bib.bib19); Tay et al., [2022](https://arxiv.org/html/2508.10478v1#bib.bib22)). These IDs allow items with similar content (embeddings) to share tokens, improving generalization and enabling cold start settings. However, generating effective Semantic IDs critically depends on the embedding space used to construct them. Prior work has shown that fine-tuning embeddings for a specific task, such as recommendation or search, yields the most effective Semantic IDs for that task(Zeng et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib27); Qu et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib17)). However, this raises an important question:
+
+Can we create Semantic IDs that perform well for both search and recommendation in a joint generative model?
+
+This is particularly relevant as a joint search and recommedation (Joint S&R) approach has emerged as a promising strategy to reduce engineering overhead and improve performance(Bhattacharya et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib2); Zheng et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib30); Zamani and Croft, [2018](https://arxiv.org/html/2508.10478v1#bib.bib26); Zhao et al., [2025](https://arxiv.org/html/2508.10478v1#bib.bib28); Penha et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib15)) by unifying data sources and models that have traditionally been treated as separated silos.
+
+In this paper, we investigate the construction of Semantic IDs in the context of joint search and recommendation generative model. Specifically, we study how different embedding sources, finetuned for search, recommendation or both, impact the downstream performance of the model. We also consider whether it is more beneficial to share or to have task specific tokens to represent each item.
+
+Our findings confirm that there is a fundamental trade-off in constructing Semantic IDs: embeddings finetuned for one task (e.g. recommendation) degrade performance on the other (e.g. search), and vice-versa. This calls into question the growing trend of using task-specific embedding spaces as priors to ID generation in generative models(Zeng et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib27); Qu et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib17)).
+
+We show that a bi-encoder model jointly fine-tuned on both search and recommendation offers a compelling compromise (see Figure[1](https://arxiv.org/html/2508.10478v1#S1.F1 "Figure 1 ‣ 1. Introduction ‣ Semantic IDs for Joint Generative Search and Recommendation")), yielding Semantic IDs that generalize across tasks with minimal loss in individual task effectiveness. This challenges the conventional wisdom that optimal performance requires the construction of a per-task ID. In contrast, our result suggest that a shared representation space can streamline generative model design without sacrificing quality, especially in multi-task systems.
+
+As LLM-based recommendation continues to evolve, we believe this work offers a timely signal: that better generative performance may come not from task-specific specialization, but from well-constructed, generalizable semantic IDs.
+
+![Image 2: Refer to caption](https://arxiv.org/html/2508.10478v1/x2.png)
+
+Figure 2. Task specific Semantic ID construction methods for a joint generative search and recommendation model. On the left we have Semantic IDs based on a bi-encoder model fine-tuned for search (Search based), whereas on the right we have Semantic IDs based on the embeddings of a collaborative-filtering model fine-tuned for recommendation (Rec. based).
+
+2. Motivation
+-------------
+
+Generative models promise a single architecture for both search and recommendation, yet the previous work optimizes IDs in a task-specific space. We ask: What happens when those separate optimizations collide in a unified model?. To answer this, we reproduce the three ID-construction pipelines:
+
+1.   (1)Content-based: text embeddings such as TIGER(Rajput et al., [2023](https://arxiv.org/html/2508.10478v1#bib.bib19)) and DSI(Tay et al., [2022](https://arxiv.org/html/2508.10478v1#bib.bib22)), not fine-tuned for either search or recommendation. 
+2.   (2)Search-tuned IDs: embeddings fine-tuned for retrieval effectiveness similarly to Zeng et al. ([2024](https://arxiv.org/html/2508.10478v1#bib.bib27)) 
+3.   (3)Recommendation-tuned IDs: collaborative-filtering model embeddings fine-tuned for recommendation similarly to Qu et al. ([2024](https://arxiv.org/html/2508.10478v1#bib.bib17)). 
+
+Table 1. Fine-tuning the embeddings—used for Semantic ID construction—for search and recommendation is effective in a joint generative model. However, choosing one of the fine-tuned embedding spaces comes at the expense of the other task effectiveness. Bold indicates highest effectiveness while the superscripts denote statistical significance using paired t-tests and Bonferroni correction.
+
+After calculating such embeddings for each item of the catalogue, semantic IDs are obtained by applying an ID strategy that tokenizes each item embedding into a set of discrete tokens.
+
+Table[1](https://arxiv.org/html/2508.10478v1#S2.T1 "Table 1 ‣ 2. Motivation ‣ Semantic IDs for Joint Generative Search and Recommendation") shows the performance of the semantic IDs coming from each embedding space when plugged into our Joint S&R model. The pattern is clear: _optimizing for one task sacrifices the other_. Search-tuned IDs boost retrieval by ≈\approx 5x but reduces recommendation performance by 60%. IDs fine-tuned for recommendation flip the effect. Concurrent work reports the same tension(Shi et al., [2025](https://arxiv.org/html/2508.10478v1#bib.bib21)).
+
+These observations set the stage for our contribution: Can we build a single set of semantic IDs that balances both sides? In the next section we introduce a bi-encoder jointly fine-tuned on both tasks and demonstrate how its shared embedding space reconciles the trade-off without increasing the computational costs of the Joint S&R model.
+
+3. Semantic ID Construction
+---------------------------
+
+In this section we define multiple methods for mapping items to IDs, grouped into (i) task-specific and (ii) cross-task strategies.
+
+### 3.1. Task-Specific Approaches
+
+Figure[2](https://arxiv.org/html/2508.10478v1#S1.F2 "Figure 2 ‣ 1. Introduction ‣ Semantic IDs for Joint Generative Search and Recommendation") depicts the pipeline shared by the two task-specific baselines. Each trains an embedding model on a single supervision signal and then discretizes that embedding with a quantizer model.
+
+#### Search-based
+
+Following the relevance-based ID construction(Zeng et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib27)) we train a bi-encoder model on search data D S D_{S}, composed of query and relevant item pairs using in-batch cross negative samples. We use the concatenated item metadata (e.g. title, description) of the item as its document representation. The resulting embeddings 𝐯 search\mathbf{v}^{\text{search}} are then discretized to generate Semantic IDs, which are used for both search and recommendation tasks.
+
+#### Recommendation-based
+
+Analogously, following TokenRec(Qu et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib17)), we train an Efficient Neural Matrix Factorization (ENMF) model(Chen et al., [2020](https://arxiv.org/html/2508.10478v1#bib.bib3)) on dataset D R D_{R} of interacted items of users to create collaborative-filtering based embeddings 𝐯 rec\mathbf{v}^{\text{rec}}. The embedding of each item is discretized and supplied to the generative model for both tasks.
+
+### 3.2. Cross-Task Approaches
+
+We now describe five methods that _explicitly_ incorporate information from _both_ tasks.
+
+#### Token-separated IDs.
+
+Figure[3](https://arxiv.org/html/2508.10478v1#S3.F3 "Figure 3 ‣ Prefix-Share IDs. ‣ 3.2. Cross-Task Approaches ‣ 3. Semantic ID Construction ‣ Semantic IDs for Joint Generative Search and Recommendation") shows the Separate variant. We simply prepend task tags to the two task-specific IDs above, yielding tokens: ID i sep=⟨𝚂𝙴𝙰𝚁𝙲𝙷:ID i search,𝚁𝙴𝙲:ID i rec⟩.\text{ID}^{\text{sep}}_{i}=\langle\mathtt{SEARCH{:}}\text{ID}^{\text{search}}_{i},\;\mathtt{REC{:}}\text{ID}^{\text{rec}}_{i}\rangle. This strategy doubles the ID vocabulary size but keeps training simple: search prompts may only output search tokens, while recommendation prompts only recommendation ones.
+
+#### Prefix-Share IDs.
+
+Adapting the idea of Shi et al. ([2025](https://arxiv.org/html/2508.10478v1#bib.bib21)), Prefix-share allocates three codebooks: one shared (SHARED) plus the two task-specific prefixes above. A single encoder ingests the concatenated embeddings [𝐯 i search;𝐯 i rec][\mathbf{v}^{\text{search}}_{i};\mathbf{v}^{\text{rec}}_{i}]; two decoders learn codebook-specific reconstructions. The final ID is the concatenation of shared tokens followed by task-specific ones.
+
+![Image 3: Refer to caption](https://arxiv.org/html/2508.10478v1/x3.png)
+
+Figure 3. Token-separated Semantic IDs approach (Separate), where each task has its own set of semantic IDs constructed from search and recommendation speficic embeddings.
+
+#### Embedding-Combined IDs.
+
+Figure[4](https://arxiv.org/html/2508.10478v1#S3.F4 "Figure 4 ‣ Embedding-Combined IDs. ‣ 3.2. Cross-Task Approaches ‣ 3. Semantic ID Construction ‣ Semantic IDs for Joint Generative Search and Recommendation") illustrates three embedding-level fusion strategies.
+
+*   •Fused concat. We ℓ 2\ell_{2}-normalize 𝐯 i search\mathbf{v}^{\text{search}}_{i} and 𝐯 i rec\mathbf{v}^{\text{rec}}_{i} and concatenate them: 𝐯 i concat=[𝐯 i search;𝐯 i rec]\mathbf{v}^{\text{concat}}_{i}=[\mathbf{v}^{\text{search}}_{i};\mathbf{v}^{\text{rec}}_{i}]. 
+*   •Fused SVD. We again normalize the two embeddings but first reduce the higher-dimensional space with truncated SVD so that both have equal dimensionality d d. We then element-wise _add_ them: 𝐯 i svd=𝐯 i search+𝐯 i rec\mathbf{v}^{\text{svd}}_{i}=\mathbf{v}^{\text{search}}_{i}+\mathbf{v}^{\text{rec}}_{i}. 
+*   •Multi-task. We train the bi-encoder on _both_ supervision signals: query–item pairs from D S D_{S}_and_ co-occurring item pairs from D R D_{R}. The shared encoder is optimized with the sum of the two contrastive losses, producing embeddings 𝐯 i mt\mathbf{v}^{\text{mt}}_{i} that carry retrieval _and_ collaborative filtering cues. 
+
+![Image 4: Refer to caption](https://arxiv.org/html/2508.10478v1/x4.png)
+
+Figure 4. Embedding combined approaches where both tasks are considered. On the left we have Multi-task which first trains a Bi-encoder for both search and recommendation and then generates Semantic IDs. On the right we have Fused which combines both embeddings coming from search and recommendation models and then uses the combination to generate Semantic IDs.
+
+4. Experimental Setup
+---------------------
+
+#### Dataset
+
+Following Penha _et al_(Penha et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib15)) we build a S&R dataset from MovieLens25M(Harper and Konstan, [2015](https://arxiv.org/html/2508.10478v1#bib.bib8)). The dataset contains 62 138 movies, 1.24 M user–item interactions (chronologically split; last interaction per user for test) and exactly 20 natural-language queries per item (10 train / 10 test) generated with Gemini-2.0-flash 1 1 1 We use the following prompt: “Your task is to return a list with 10 queries for a given movie (title of the movie, year and description and tags) After generating the initial set of queries, you should also generate a list of the same size with paraphrased of the first queries. The paraphrased queries should be similar to the original queries, but with different words, structure and slight variations in the meaning. The queries should be realistic things that a user would ask to find the movie. The queries should be diverse and cover different aspects of the movie. The queries should not include the title of the movie, but be broader descriptions of the movie and its content. The queries should also contain broad topics, themes and genres of the movie. Movie: {METADATA}”.. We note that having 10/10 queries for train/test for each item removes the popularity bias of the search dataset. Given that we do not know the true distribution of popularity in search, i.e. there are no real user logs for the MovieLens data, we decided on using the uniform distribution. This means that the search popularity distribution is quite different from the recommendation distribution, and thus we might expect results to be more favorable in real-life distributions with some similarity between popularity distributions. Approaches that use the content of the items (content-based, search based and cross-task ones) use the title, year, description, genres, tags and genome tags(Vig et al., [2012](https://arxiv.org/html/2508.10478v1#bib.bib24)) to calculate their embeddings.
+
+#### Evaluation Metrics
+
+Given our focus on the retrieval task, we rely on Recall@30. We run every model five times with different random seeds and report the mean recall across different runs. We assess the statistical significance of our results using paired Students’ t-tests with a 95% confidence interval.
+
+#### Embedding models
+
+We use the following models to generate item embeddings:
+
+*   •Content-based: we use the pre-trained all-mpnet-base-v2 from sentence transformers(Reimers and Gurevych, [2019](https://arxiv.org/html/2508.10478v1#bib.bib20)) on top of the concatenated metadata described in the dataset subsection. 
+*   •For search: we start from the same pre-trained model, and further fine-tune it on search data with in-batch random negatives (MultipleNegativesRankingLoss) using sentence transformers for 5 epochs, batch 512, LR 2e-5, Adam. 
+*   •For recommendation: We train ENMF(Chen et al., [2020](https://arxiv.org/html/2508.10478v1#bib.bib3)) via RecBole(Zhao et al., [2022](https://arxiv.org/html/2508.10478v1#bib.bib29)), 30 epochs, batch 512, embedding 256, LR 0.001, Adam. 
+
+#### Generative model
+
+google/flan-t5-base(Raffel et al., [2020](https://arxiv.org/html/2508.10478v1#bib.bib18)), trained jointly on S&R for 3 epochs (LR 0.002, batch 128, AdamW, weight-decay 0.01). To increase the number of distinct items retrieved for all generative retrieval models we resort to a diversified beam search approach(Vijayakumar et al., [2016](https://arxiv.org/html/2508.10478v1#bib.bib25)): beam 60, diversity penalty 0.25, 30 groups.
+
+#### ID tokenisation
+
+Unless otherwise stated we use two codebooks of size 256 (512 tokens total). Some cross-task methods require additional tokens. _Separate_ adds in total 1024 new tokens to the vocabulary as each semantic ID space is treated separatedly. _Prefix-share_ has 256 shared tokens and 512 task-specific tokens.
+
+5. Results
+----------
+
+#### Semantic IDs for Joint Search and Recommendation
+
+Table 2. R@30 of the joint generative model using different Semantic ID construction methods that consider both objectives (search and recommendation). Head indicates the effectiveness for the top 1% most popular items in the train set, where Torso is the remaining set of items. Search data does not have a popularity bias, i.e. all items have the same number of queries. Bold indicates highest scores, while underline indicates second highest.
+
+Table[2](https://arxiv.org/html/2508.10478v1#S5.T2 "Table 2 ‣ Semantic IDs for Joint Search and Recommendation ‣ 5. Results ‣ Semantic IDs for Joint Generative Search and Recommendation") displays our results for different Semantic ID construction methods, for search and recommendation.
+
+#### Task-Specific Approaches.
+
+The first two rows show the top performers _per task_, as anticipated in the motivation. However, they are based on specialized IDs and cannot provide a satisfactory trade-off for a unified S&R generative model, as each semantic ID is overfitted to the target task. Interestingly, we see that for the _Torso_ entities, the search based embeddings are effective, demonstrating that the popularity of each entity plays an important role in the recommendation data and that for less popular items leaning more on content is effective.
+
+#### Cross-Task Approaches.
+
+The remaining rows are methods that use embeddings from both tasks. Separate leverages distinct tokens for each task, adding more tokens to the vocabulary of the generative model (task-specific Semantic ID tokens). This means that the knowledge learned from one task cannot be used for the task-specific tokens of the other task, negating the regularization effect in item representations discussed by Penha et al. ([2024](https://arxiv.org/html/2508.10478v1#bib.bib15)).
+
+Prefix-share also underperforms the other methods, due to the underlying quantization approach not performing well here (see next section on the tokenization method ablation). We observe that both methods under perform methods that first combine the embeddings and then construct Semantic IDs (last three rows).
+
+The results for the fusion methods show that the concatenation of the embeddings can be problematic if one of the embedding spaces is larger than the other (the Bi-encoder model is 386 dimensional while the ENMF has 256 dimensions). The embedding space with larger dimensionality might become more represented. By making the dimensionality the same with Fused SVD we improve the effectiveness of the model for recommendation, while degrading the search effectiveness compared to Fused concat 4 4 4 Another solution to have embedding spaces with equal size that we did not explore is to train models with a Matryoshka objective(Kusupati et al., [2022](https://arxiv.org/html/2508.10478v1#bib.bib12)), and using the first dimensions only..
+
+Finally, we see that training the encoding model for both search and recommendation tasks (Multi-task) offers an effective trade-off of the search and recommendation effectiveness. A similar solution to inject collaborative filtering embeddings into a content-based model has been proposed by Vančura et al. ([2024](https://arxiv.org/html/2508.10478v1#bib.bib23)).
+
+We believe this is a promising direction to obtain item representations that work well across search and recommendation problems.
+
+#### Tokenization Method Ablation
+
+Table[3](https://arxiv.org/html/2508.10478v1#S5.T3 "Table 3 ‣ Tokenization Method Ablation ‣ 5. Results ‣ Semantic IDs for Joint Generative Search and Recommendation") shows the results for the ablation of the tokenization methods that receive as input embeddings and outputs discrete tokens, while keeping the embedding space fixed coming from _Multi-task_ (similar results were found when performing the same ablation with the other approaches for Semantic ID construction). We see that RQ-KMeans is the best method to construct IDs for our dataset, outperforming common approaches such as RQ-VAE. Hong et al. ([2025](https://arxiv.org/html/2508.10478v1#bib.bib9)) also found RQ-VAE unstable and opted for hierarchical k-means in their experiments. We leave for future work the investigation of the reasons why it outperforms learned auto-encoder approaches in this experimental setting.
+
+Table 3. R@30 of the joint generative search and recommendation model for different tokenization methods using embeddings from Multi-task approach (similar results were found when performing the same ablation with the other approaches for Semantic ID construction).
+
+6. Conclusion
+-------------
+
+In this paper we show that the way Semantic IDs are built is a decisive factor for the effectiveness of a unified generative model that serves both search and recommendation tasks, systematically comparing _task-specific_, _token-separated_, and _embedding-combined_ constructions.
+
+We find that task-specific Semantic IDs excel only in isolation, whereas the _cross-task_ ones deliver a balanced, high-quality solution without inflating the token budget. Ablation of discretisation methods further shows that a lightweight RQ-KMeans tokeniser outperforms VQ-VAE variants.
+
+These observations provide _early empirical evidence_ that unifying item representations is not only feasible but advantageous. This insight is critical as LLM-based retrieval and recommendation systems are converging in practice(Bhattacharya et al., [2024](https://arxiv.org/html/2508.10478v1#bib.bib2)). By highlighting a practical route toward shared Semantic IDs, our study offers a timely snapshot of where the field is heading and points to several open questions on representation learning, token efficiency and cold-start robustness.
+
+We hope these findings spark follow-up work on generalisable, semantically grounded ID schemes and inform the next wave of unified generative recommender architectures.
+
+References
+----------
+
+*   (1)
+*   Bhattacharya et al. (2024) Moumita Bhattacharya, Vito Ostuni, and Sudarshan Lamkhede. 2024. Joint Modeling of Search and Recommendations Via an Unified Contextual Recommender (UniCoRn). In _Proceedings of the 18th ACM Conference on Recommender Systems_. 793–795. 
+*   Chen et al. (2020) Chong Chen, Min Zhang, Yongfeng Zhang, Yiqun Liu, and Shaoping Ma. 2020. Efficient neural matrix factorization without sampling for recommendation. _ACM Transactions on Information Systems (TOIS)_ 38, 2 (2020), 1–28. 
+*   De Cao et al. (2020) Nicola De Cao, Gautier Izacard, Sebastian Riedel, and Fabio Petroni. 2020. Autoregressive entity retrieval. _arXiv preprint arXiv:2010.00904_ (2020). 
+*   Doh et al. (2025) Seungheon Doh, Keunwoo Choi, and Juhan Nam. 2025. TALKPLAY: Multimodal Music Recommendation with Large Language Models. _arXiv preprint arXiv:2502.13713_ (2025). 
+*   Douze et al. (2024) Matthijs Douze, Alexandr Guzhva, Chengqi Deng, Jeff Johnson, Gergely Szilvasy, Pierre-Emmanuel Mazaré, Maria Lomeli, Lucas Hosseini, and Hervé Jégou. 2024. The Faiss library. (2024). arXiv:2401.08281[cs.LG] 
+*   Geng et al. (2022) Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. 2022. Recommendation as language processing (rlp): A unified pretrain, personalized prompt & predict paradigm (p5). In _Proceedings of the 16th ACM conference on recommender systems_. 299–315. 
+*   Harper and Konstan (2015) F Maxwell Harper and Joseph A Konstan. 2015. The movielens datasets: History and context. _Acm transactions on interactive intelligent systems (tiis)_ 5, 4 (2015), 1–19. 
+*   Hong et al. (2025) Minjie Hong, Yan Xia, Zehan Wang, Jieming Zhu, Ye Wang, Sihang Cai, Xiaoda Yang, Quanyu Dai, Zhenhua Dong, Zhimeng Zhang, et al. 2025. EAGER-LLM: Enhancing Large Language Models as Recommenders through Exogenous Behavior-Semantic Integration. In _Proceedings of the ACM on Web Conference 2025_. 2754–2762. 
+*   Hua et al. (2023) Wenyue Hua, Shuyuan Xu, Yingqiang Ge, and Yongfeng Zhang. 2023. How to index item ids for recommendation foundation models. In _Proceedings of the Annual International ACM SIGIR Conference on Research and Development in Information Retrieval in the Asia Pacific Region_. 195–204. 
+*   Kang and McAuley (2018) Wang-Cheng Kang and Julian McAuley. 2018. Self-attentive sequential recommendation. In _2018 IEEE international conference on data mining (ICDM)_. IEEE, 197–206. 
+*   Kusupati et al. (2022) Aditya Kusupati, Gantavya Bhatt, Aniket Rege, Matthew Wallingford, Aditya Sinha, Vivek Ramanujan, William Howard-Snyder, Kaifeng Chen, Sham Kakade, Prateek Jain, et al. 2022. Matryoshka representation learning. _Advances in Neural Information Processing Systems_ 35 (2022), 30233–30249. 
+*   Palumbo et al. (2025) Enrico Palumbo, Gustavo Penha, Andreas Damianou, José Luis Redondo García, Timothy Christopher Heath, Alice Wang, Hugues Bouchard, and Mounia Lalmas. 2025. Text2Tracks: Prompt-based Music Recommendation via Generative Retrieval. _arXiv preprint arXiv:2503.24193_ (2025). 
+*   Pedregosa et al. (2011) F. Pedregosa, G. Varoquaux, A. Gramfort, V. Michel, B. Thirion, O. Grisel, M. Blondel, P. Prettenhofer, R. Weiss, V. Dubourg, J. Vanderplas, A. Passos, D. Cournapeau, M. Brucher, M. Perrot, and E. Duchesnay. 2011. Scikit-learn: Machine Learning in Python. _Journal of Machine Learning Research_ 12 (2011), 2825–2830. 
+*   Penha et al. (2024) Gustavo Penha, Ali Vardasbi, Enrico Palumbo, Marco De Nadai, and Hugues Bouchard. 2024. Bridging Search and Recommendation in Generative Retrieval: Does One Task Help the Other?. In _Proceedings of the 18th ACM Conference on Recommender Systems_. 340–349. 
+*   Petrov and Macdonald (2023) Aleksandr V Petrov and Craig Macdonald. 2023. Generative sequential recommendation with gptrec. _arXiv preprint arXiv:2306.11114_ (2023). 
+*   Qu et al. (2024) Haohao Qu, Wenqi Fan, Zihuai Zhao, and Qing Li. 2024. TokenRec: Learning to Tokenize ID for LLM-based Generative Recommendation. arXiv:2406.10450[cs.IR] [https://arxiv.org/abs/2406.10450](https://arxiv.org/abs/2406.10450)
+*   Raffel et al. (2020) Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. 2020. Exploring the limits of transfer learning with a unified text-to-text transformer. _Journal of machine learning research_ 21, 140 (2020), 1–67. 
+*   Rajput et al. (2023) Shashank Rajput, Nikhil Mehta, Anima Singh, Raghunandan Hulikal Keshavan, Trung Vu, Lukasz Heldt, Lichan Hong, Yi Tay, Vinh Tran, Jonah Samost, et al. 2023. Recommender systems with generative retrieval. _Advances in Neural Information Processing Systems_ 36 (2023), 10299–10315. 
+*   Reimers and Gurevych (2019) Nils Reimers and Iryna Gurevych. 2019. Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. In _Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing_. Association for Computational Linguistics. [https://arxiv.org/abs/1908.10084](https://arxiv.org/abs/1908.10084)
+*   Shi et al. (2025) Teng Shi, Jun Xu, Xiao Zhang, Xiaoxue Zang, Kai Zheng, Yang Song, and Enyun Yu. 2025. Unified Generative Search and Recommendation. _arXiv preprint arXiv:2504.05730_ (2025). 
+*   Tay et al. (2022) Yi Tay, Vinh Tran, Mostafa Dehghani, Jianmo Ni, Dara Bahri, Harsh Mehta, Zhen Qin, Kai Hui, Zhe Zhao, Jai Gupta, et al. 2022. Transformer memory as a differentiable search index. _Advances in Neural Information Processing Systems_ 35 (2022), 21831–21843. 
+*   Vančura et al. (2024) Vojtěch Vančura, Pavel Kordík, and Milan Straka. 2024. beeFormer: Bridging the Gap Between Semantic and Interaction Similarity in Recommender Systems. In _Proceedings of the 18th ACM Conference on Recommender Systems_. 1102–1107. 
+*   Vig et al. (2012) Jesse Vig, Shilad Sen, and John Riedl. 2012. The tag genome: Encoding community knowledge to support novel interaction. _ACM Transactions on Interactive Intelligent Systems (TiiS)_ 2, 3 (2012), 1–44. 
+*   Vijayakumar et al. (2016) Ashwin K Vijayakumar, Michael Cogswell, Ramprasath R Selvaraju, Qing Sun, Stefan Lee, David Crandall, and Dhruv Batra. 2016. Diverse beam search: Decoding diverse solutions from neural sequence models. _arXiv preprint arXiv:1610.02424_ (2016). 
+*   Zamani and Croft (2018) Hamed Zamani and W Bruce Croft. 2018. Joint modeling and optimization of search and recommendation. _arXiv preprint arXiv:1807.05631_ (2018). 
+*   Zeng et al. (2024) Hansi Zeng, Chen Luo, Bowen Jin, Sheikh Muhammad Sarwar, Tianxin Wei, and Hamed Zamani. 2024. Scalable and Effective Generative Information Retrieval. In _Proceedings of the ACM Web Conference 2024_ (Singapore, Singapore) _(WWW ’24)_. Association for Computing Machinery, New York, NY, USA, 1441–1452. [doi:10.1145/3589334.3645477](https://doi.org/10.1145/3589334.3645477)
+*   Zhao et al. (2025) Jujia Zhao, Wenjie Wang, Chen Xu, Xiuying Chen, Zhaochun Ren, and Suzan Verberne. 2025. Unifying Search and Recommendation: A Generative Paradigm Inspired by Information Theory. _arXiv preprint arXiv:2504.06714_ (2025). 
+*   Zhao et al. (2022) Wayne Xin Zhao, Yupeng Hou, Xingyu Pan, Chen Yang, Zeyu Zhang, Zihan Lin, Jingsen Zhang, Shuqing Bian, Jiakai Tang, Wenqi Sun, Yushuo Chen, Lanling Xu, Gaowei Zhang, Zhen Tian, Changxin Tian, Shanlei Mu, Xinyan Fan, Xu Chen, and Ji-Rong Wen. 2022. RecBole 2.0: Towards a More Up-to-Date Recommendation Library. In _CIKM_. ACM, 4722–4726. 
+*   Zheng et al. (2024) Bowen Zheng, Yupeng Hou, Hongyu Lu, Yu Chen, Wayne Xin Zhao, Ming Chen, and Ji-Rong Wen. 2024. Adapting large language models by integrating collaborative semantics for recommendation. In _2024 IEEE 40th International Conference on Data Engineering (ICDE)_. IEEE, 1435–1448.

@@ -5,7 +5,7 @@
 - **Image**: `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04`
 - **Container Start Command**:
   ```
-  bash -c 'if [ ! -d /workspace/experiments-penha-2025 ]; then git clone https://github.com/charleslow/experiments-penha-2025.git /workspace/experiments-penha-2025; fi && cd /workspace/experiments-penha-2025 && git pull && bash setup.sh && sleep infinity'
+bash -c 'if [ ! -d /workspace/experiments-penha-2025 ]; then git clone https://github.com/charleslow/experiments-penha-2025.git /workspace/experiments-penha-2025; fi && cd /workspace/experiments-penha-2025 && git pull && bash setup.sh && sleep infinity'
   ```
 - **Environment Variables** (optional):
   - `GIT_USER_NAME`: Your name for git commits
