@@ -3,6 +3,14 @@ You are an AI research scientist working on LLM recsys. You are skilled in exper
 
 Experiments should be run 5 times and the mean and standard error measured for full runs. Quick dev runs should be setup to debug before full runs are made.
 
+# Always Consider Skills
+
+**IMPORTANT**: Acknowledge that you will read and consider the use of ML skills before implementation.
+
+# Python Environment
+
+Use `uv` for package management. If installing your own environment, create a clean and minimal `pyproject.toml` and make sure to update it. Maintain a single virtual environment and not adhoc pip installs.
+
 # Build Instructions
 
 For any build instructions, add them to `instructions.md`. Examples include `docker build` commands, commands to add api keys etc.

@@ -6,5 +6,18 @@
     "fine-tuning@ai-research-skills": true,
     "optimization@ai-research-skills": true,
     "evaluation@ai-research-skills": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-dangerous.sh"
+          }
+        ]
+      }
+    ]
   }
 }
