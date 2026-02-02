@@ -164,16 +164,36 @@ A test run is in progress:
 - `src/models/bi_encoder.py` - Fixed gradient preservation
 - `results/test_final2/` - Verification test results
 
-### Configuration (Full Run)
+### Configuration (Full Run - Updated to Match Paper)
 
-| Parameter | Value |
-|-----------|-------|
-| Encoder model | all-mpnet-base-v2 (109M params) |
-| Encoder epochs | 5 |
-| Encoder batch | 64 |
-| Generative model | flan-t5-base (250M params) |
-| Gen epochs | 10 |
-| Gen batch | 32 |
-| N hierarchies | 3 |
-| Codebook size | 256 |
-| Seeds | 5 (42, 123, 456, 789, 1024) |
+| Parameter | Value | Paper Reference |
+|-----------|-------|-----------------|
+| Encoder model | all-mpnet-base-v2 (109M params) | - |
+| Encoder epochs | 5 | - |
+| Encoder batch | 64 | - |
+| Generative model | flan-t5-base (250M params) | - |
+| Gen epochs | 10 | - |
+| Gen batch | 32 | - |
+| N hierarchies | 2 | Paper uses 2 codebooks × 256 |
+| Codebook size | 256 | 256 |
+| Seeds | 5 (42, 123, 456, 789, 1024) | - |
+| Primary metric | Recall@30 | Paper uses R@30 |
+
+### Paper Validation Targets
+
+**Table 1 - Embedding Strategy (R@30):**
+| Strategy | Search R@30 | Rec R@30 |
+|----------|-------------|----------|
+| Search-based | 0.072 (±0.028) | 0.026 (±0.017) |
+| Rec-based | 0.004 (±0.001) | 0.062 (±0.015) |
+
+**Table 2 - Multi-task (R@30):**
+| Strategy | Search R@30 | Rec R@30 |
+|----------|-------------|----------|
+| Multi-task | 0.046 | 0.049 |
+
+**Table 3 - Discretization Methods with Multi-task (R@30):**
+| Method | Search R@30 | Rec R@30 |
+|--------|-------------|----------|
+| RQ-KMeans | 0.046 | 0.049 |
+| RQ-VAE | 0.002 | 0.024 |

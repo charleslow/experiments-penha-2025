@@ -70,8 +70,8 @@ class FullRunConfig:
     encoder_batch: int = 64  # Reduced for A4500 VRAM
     encoder_lr: float = 2e-5
 
-    # Discretization
-    n_hierarchies: int = 3
+    # Discretization (paper uses 2 codebooks × 256)
+    n_hierarchies: int = 2
     codebook_size: int = 256
 
     # Generative
@@ -389,9 +389,9 @@ def train_generative_and_evaluate(
 
     if len(test_queries) == 0:
         logger.warning("No test queries available")
-        return {"search_NDCG@10": 0.0, "search_Recall@10": 0.0}
+        return {"search_Recall@30": 0.0, "rec_Recall@30": 0.0}
 
-    # Generate in batches
+    # Generate in batches (30 candidates for Recall@30)
     batch_size = 16
     all_generated = []
     all_scores = []
@@ -399,7 +399,7 @@ def train_generative_and_evaluate(
     with torch.no_grad():
         for i in range(0, len(test_queries), batch_size):
             batch_queries = test_queries[i:i + batch_size]
-            gen_ids, scores = model.generate(batch_queries, num_return_sequences=10)
+            gen_ids, scores = model.generate(batch_queries, num_return_sequences=30)
             all_generated.append(gen_ids)
             all_scores.append(scores)
 
@@ -408,15 +408,18 @@ def train_generative_and_evaluate(
         scores = torch.cat(all_scores, dim=0)
         target_ids = torch.stack(test_targets)
 
-        # Evaluate
+        # Evaluate with k=30 to match paper's Recall@30
         results = evaluate_semantic_id_retrieval(
             generated_ids=generated_ids,
             target_ids=target_ids,
             scores=scores,
-            k_values=[1, 5, 10],
+            k_values=[10, 20, 30],
         )
+        # Map to expected field names for both tasks
+        results["search_Recall@30"] = results.get("HitRate@30", 0.0)
+        results["rec_Recall@30"] = results.get("HitRate@30", 0.0)
     else:
-        results = {"HitRate@10": 0.0, "MRR@10": 0.0}
+        results = {"search_Recall@30": 0.0, "rec_Recall@30": 0.0}
 
     return results
 
@@ -454,7 +457,7 @@ def evaluate_biencoder_retrieval(
                     relevance.append(rel)
 
         if not query_list:
-            return {"NDCG@10": 0.0, "Recall@10": 0.0}
+            return {"Recall@30": 0.0}
 
         with torch.no_grad():
             query_embeddings = model.encode(query_list)
@@ -464,7 +467,7 @@ def evaluate_biencoder_retrieval(
             query_embeddings=query_embeddings,
             item_embeddings=item_embeddings,
             relevance_labels=relevance_matrix,
-            k_values=[5, 10, 20],
+            k_values=[10, 20, 30],  # Paper uses R@30
         )
 
     elif task == "rec":
@@ -473,7 +476,7 @@ def evaluate_biencoder_retrieval(
 
         cooc = get_cooccurrence_pairs(test_df, window_size=5)
         if len(cooc) == 0:
-            return {"NDCG@10": 0.0, "Recall@10": 0.0}
+            return {"Recall@30": 0.0}
 
         # Sample subset for efficiency
         if len(cooc) > 1000:
@@ -484,7 +487,7 @@ def evaluate_biencoder_retrieval(
 
         query_texts = [items[iid].text for iid in query_item_ids if iid in items]
         if not query_texts:
-            return {"NDCG@10": 0.0, "Recall@10": 0.0}
+            return {"Recall@30": 0.0}
 
         with torch.no_grad():
             query_embeddings = model.encode(query_texts)
@@ -502,7 +505,7 @@ def evaluate_biencoder_retrieval(
             query_embeddings=query_embeddings,
             item_embeddings=item_embeddings,
             relevance_labels=relevance_matrix,
-            k_values=[5, 10, 20],
+            k_values=[10, 20, 30],  # Paper uses R@30
         )
     else:
         # Multi-task: average of both
@@ -575,22 +578,20 @@ def run_ablation1_embedding_strategy(
                     task=strategy,
                 )
 
-                # Store results
+                # Store results (using Recall@30 to match paper)
                 result = ExperimentResults(
                     embedding_strategy=strategy,
                     discretization_method="rq_kmeans",
-                    search_ndcg_10=eval_results.get("search_NDCG@10", eval_results.get("NDCG@10", 0.0)),
-                    search_recall_10=eval_results.get("search_Recall@10", eval_results.get("Recall@10", 0.0)),
-                    rec_ndcg_10=eval_results.get("rec_NDCG@10", eval_results.get("NDCG@10", 0.0)),
-                    rec_recall_10=eval_results.get("rec_Recall@10", eval_results.get("Recall@10", 0.0)),
+                    search_recall_30=eval_results.get("search_Recall@30", eval_results.get("Recall@30", 0.0)),
+                    rec_recall_30=eval_results.get("rec_Recall@30", eval_results.get("Recall@30", 0.0)),
                     run_id=seed_idx,
                 )
                 results.append(result)
 
                 run_time = time.time() - run_start
                 logger.info(f"Completed in {run_time:.1f}s")
-                logger.info(f"Search NDCG@10: {result.search_ndcg_10:.4f}")
-                logger.info(f"Rec NDCG@10: {result.rec_ndcg_10:.4f}")
+                logger.info(f"Search Recall@30: {result.search_recall_30:.4f}")
+                logger.info(f"Rec Recall@30: {result.rec_recall_30:.4f}")
 
             except Exception as e:
                 logger.error(f"Run failed: {e}")
@@ -601,10 +602,8 @@ def run_ablation1_embedding_strategy(
                 results.append(ExperimentResults(
                     embedding_strategy=strategy,
                     discretization_method="rq_kmeans",
-                    search_ndcg_10=0.0,
-                    search_recall_10=0.0,
-                    rec_ndcg_10=0.0,
-                    rec_recall_10=0.0,
+                    search_recall_30=0.0,
+                    rec_recall_30=0.0,
                     run_id=seed_idx,
                 ))
 
@@ -663,10 +662,8 @@ def run_ablation2_discretization_method(
                     results.append(ExperimentResults(
                         embedding_strategy="multi_task",
                         discretization_method=method,
-                        search_ndcg_10=0.0,
-                        search_recall_10=0.0,
-                        rec_ndcg_10=0.0,
-                        rec_recall_10=0.0,
+                        search_recall_30=0.0,
+                        rec_recall_30=0.0,
                         run_id=seed_idx,
                     ))
                     continue
@@ -691,22 +688,20 @@ def run_ablation2_discretization_method(
                     output_dir=output_dir,
                 )
 
-                # Store results
+                # Store results (using Recall@30 for generative retrieval)
                 result = ExperimentResults(
                     embedding_strategy="multi_task",
                     discretization_method=method,
-                    search_ndcg_10=gen_results.get("HitRate@10", 0.0),
-                    search_recall_10=gen_results.get("MRR@10", 0.0),
-                    rec_ndcg_10=gen_results.get("HitRate@10", 0.0),
-                    rec_recall_10=gen_results.get("MRR@10", 0.0),
+                    search_recall_30=gen_results.get("search_Recall@30", 0.0),
+                    rec_recall_30=gen_results.get("rec_Recall@30", 0.0),
                     run_id=seed_idx,
                 )
                 results.append(result)
 
                 run_time = time.time() - run_start
                 logger.info(f"Completed in {run_time:.1f}s")
-                logger.info(f"HitRate@10: {result.search_ndcg_10:.4f}")
-                logger.info(f"MRR@10: {result.search_recall_10:.4f}")
+                logger.info(f"Search Recall@30: {result.search_recall_30:.4f}")
+                logger.info(f"Rec Recall@30: {result.rec_recall_30:.4f}")
 
             except Exception as e:
                 logger.error(f"Run failed: {e}")
@@ -716,10 +711,8 @@ def run_ablation2_discretization_method(
                 results.append(ExperimentResults(
                     embedding_strategy="multi_task",
                     discretization_method=method,
-                    search_ndcg_10=0.0,
-                    search_recall_10=0.0,
-                    rec_ndcg_10=0.0,
-                    rec_recall_10=0.0,
+                    search_recall_30=0.0,
+                    rec_recall_30=0.0,
                     run_id=seed_idx,
                 ))
 
@@ -740,22 +733,16 @@ def aggregate_results(results: List[ExperimentResults]) -> List[AggregatedResult
     for (strategy, method), runs in groups.items():
         n = len(runs)
 
-        search_ndcg = [r.search_ndcg_10 for r in runs]
-        search_recall = [r.search_recall_10 for r in runs]
-        rec_ndcg = [r.rec_ndcg_10 for r in runs]
-        rec_recall = [r.rec_recall_10 for r in runs]
+        search_recall = [r.search_recall_30 for r in runs]
+        rec_recall = [r.rec_recall_30 for r in runs]
 
         aggregated.append(AggregatedResults(
             embedding_strategy=strategy,
             discretization_method=method,
-            search_ndcg_10_mean=np.mean(search_ndcg),
-            search_ndcg_10_std=np.std(search_ndcg) / np.sqrt(n) if n > 1 else 0.0,
-            search_recall_10_mean=np.mean(search_recall),
-            search_recall_10_std=np.std(search_recall) / np.sqrt(n) if n > 1 else 0.0,
-            rec_ndcg_10_mean=np.mean(rec_ndcg),
-            rec_ndcg_10_std=np.std(rec_ndcg) / np.sqrt(n) if n > 1 else 0.0,
-            rec_recall_10_mean=np.mean(rec_recall),
-            rec_recall_10_std=np.std(rec_recall) / np.sqrt(n) if n > 1 else 0.0,
+            search_recall_30_mean=np.mean(search_recall),
+            search_recall_30_std=np.std(search_recall) / np.sqrt(n) if n > 1 else 0.0,
+            rec_recall_30_mean=np.mean(rec_recall),
+            rec_recall_30_std=np.std(rec_recall) / np.sqrt(n) if n > 1 else 0.0,
             n_runs=n,
         ))
 
@@ -801,14 +788,14 @@ def save_results(
     plots_dir = output_dir / "plots"
     plots_dir.mkdir(exist_ok=True)
 
-    # Ablation 1 plot
+    # Ablation 1 plot (using Recall@30 to match paper)
     emb_results = {}
     for r in agg1:
         emb_results[r.embedding_strategy] = {
-            "NDCG@10": r.search_ndcg_10_mean,
-            "Recall@10": r.search_recall_10_mean,
-            "NDCG@10_std": r.search_ndcg_10_std,
-            "Recall@10_std": r.search_recall_10_std,
+            "Search R@30": r.search_recall_30_mean,
+            "Rec R@30": r.rec_recall_30_mean,
+            "Search R@30_std": r.search_recall_30_std,
+            "Rec R@30_std": r.rec_recall_30_std,
         }
 
     plot_embedding_ablation(
@@ -821,10 +808,10 @@ def save_results(
     disc_results = {}
     for r in agg2:
         disc_results[r.discretization_method] = {
-            "NDCG@10": r.search_ndcg_10_mean,
-            "Recall@10": r.search_recall_10_mean,
-            "NDCG@10_std": r.search_ndcg_10_std,
-            "Recall@10_std": r.search_recall_10_std,
+            "Search R@30": r.search_recall_30_mean,
+            "Rec R@30": r.rec_recall_30_mean,
+            "Search R@30_std": r.search_recall_30_std,
+            "Rec R@30_std": r.rec_recall_30_std,
         }
 
     plot_discretization_ablation(
@@ -839,8 +826,8 @@ def save_results(
         tradeoff_data.append({
             "strategy": r.embedding_strategy,
             "method": r.discretization_method,
-            "search_ndcg": r.search_ndcg_10_mean,
-            "rec_ndcg": r.rec_ndcg_10_mean,
+            "search_recall": r.search_recall_30_mean,
+            "rec_recall": r.rec_recall_30_mean,
         })
 
     plot_tradeoff_scatter(
@@ -854,20 +841,26 @@ def save_results(
 
     # Print summary table
     print("\n" + "=" * 80)
-    print("RESULTS SUMMARY")
+    print("RESULTS SUMMARY (Primary metric: Recall@30 to match paper)")
     print("=" * 80)
+
+    # Paper reference values for validation
+    print("\nPaper Reference (Table 1):")
+    print("  Search-based: Search R@30=0.072, Rec R@30=0.026")
+    print("  Rec-based: Search R@30=0.004, Rec R@30=0.062")
+    print("  Multi-task (Table 2): Search R@30=0.046, Rec R@30=0.049")
 
     print("\nAblation 1: Embedding Strategy (RQ-KMeans fixed)")
     print("-" * 60)
-    print(f"{'Strategy':<15} {'Search NDCG@10':<20} {'Rec NDCG@10':<20}")
+    print(f"{'Strategy':<15} {'Search R@30':<20} {'Rec R@30':<20}")
     for r in agg1:
-        print(f"{r.embedding_strategy:<15} {r.search_ndcg_10_mean:.4f} ± {r.search_ndcg_10_std:.4f}    {r.rec_ndcg_10_mean:.4f} ± {r.rec_ndcg_10_std:.4f}")
+        print(f"{r.embedding_strategy:<15} {r.search_recall_30_mean:.4f} ± {r.search_recall_30_std:.4f}    {r.rec_recall_30_mean:.4f} ± {r.rec_recall_30_std:.4f}")
 
     print("\nAblation 2: Discretization Method (Multi-task fixed)")
     print("-" * 60)
-    print(f"{'Method':<15} {'HitRate@10':<20} {'MRR@10':<20}")
+    print(f"{'Method':<15} {'Search R@30':<20} {'Rec R@30':<20}")
     for r in agg2:
-        print(f"{r.discretization_method:<15} {r.search_ndcg_10_mean:.4f} ± {r.search_ndcg_10_std:.4f}    {r.search_recall_10_mean:.4f} ± {r.search_recall_10_std:.4f}")
+        print(f"{r.discretization_method:<15} {r.search_recall_30_mean:.4f} ± {r.search_recall_30_std:.4f}    {r.rec_recall_30_mean:.4f} ± {r.rec_recall_30_std:.4f}")
 
     print("=" * 80)
 

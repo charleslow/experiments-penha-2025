@@ -210,29 +210,29 @@ class FullConfig:
 
 @dataclass
 class ExperimentResults:
-    """Container for experiment results."""
+    """Container for experiment results.
+
+    Primary metric is Recall@30 to match Penha et al. 2025 paper.
+    """
 
     embedding_strategy: str
     discretization_method: str
-    search_ndcg_10: float
-    search_recall_10: float
-    rec_ndcg_10: float
-    rec_recall_10: float
+    search_recall_30: float  # Primary metric (paper uses R@30)
+    rec_recall_30: float  # Primary metric (paper uses R@30)
     run_id: int = 0
 
 
 @dataclass
 class AggregatedResults:
-    """Container for aggregated results across runs."""
+    """Container for aggregated results across runs.
+
+    Primary metric is Recall@30 to match Penha et al. 2025 paper.
+    """
 
     embedding_strategy: str
     discretization_method: str
-    search_ndcg_10_mean: float
-    search_ndcg_10_std: float
-    search_recall_10_mean: float
-    search_recall_10_std: float
-    rec_ndcg_10_mean: float
-    rec_ndcg_10_std: float
-    rec_recall_10_mean: float
-    rec_recall_10_std: float
+    search_recall_30_mean: float
+    search_recall_30_std: float
+    rec_recall_30_mean: float
+    rec_recall_30_std: float
     n_runs: int
