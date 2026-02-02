@@ -50,3 +50,7 @@ All processed data is cached on RunPod local disk to avoid recomputation. Script
 # Allowed List for Running Commands
 
 Follow the allowed list for running commands, but do not try to sneak unsafe commands into an allowed command. For example, if `docker build*` is allowed, do not use that as a path to run `docker build xx && rm -rf /`.
+
+# progress.md
+
+On long running tasks, keep track of your progress in progress.md. The logs should be in a diary style, where instead of having comprehensive bullet point summaries, you decide what information is important and relay it to the user. Also document any snags you encounter on the way. Be reflective and think about whether the progress is on track to meet the goals of the experiment.
