@@ -126,7 +126,10 @@ def create_synthetic_data(n_items: int = 100, n_users: int = 50, n_interactions:
 
 def load_data(config: FullRunConfig, force: bool = False):
     """Load or create data."""
-    raw_dir = Path("/app/data/raw/ml-25m")
+    # Try workspace path first, then /app/data path
+    raw_dir = Path("/workspace/experiments-penha-2025/data/raw/ml-25m")
+    if not raw_dir.exists():
+        raw_dir = Path("/app/data/raw/ml-25m")
 
     if not raw_dir.exists():
         alt_dir = Path("data/raw/ml-25m")

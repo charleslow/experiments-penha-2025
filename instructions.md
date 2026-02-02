@@ -105,8 +105,13 @@ uv sync --extra dev
 ### Download Data
 
 ```bash
-# Download MovieLens-25M dataset
-python scripts/download_data.py --output-dir /app/data/raw
+# Download MovieLens-25M dataset (~250MB compressed, ~1.1GB extracted)
+# Use workspace directory for persistence across restarts
+python scripts/download_data.py --output-dir /workspace/experiments-penha-2025/data/raw
+
+# Verify download
+ls /workspace/experiments-penha-2025/data/raw/ml-25m/
+# Should show: ratings.csv, movies.csv, links.csv, etc.
 ```
 
 ### Run Dev Experiment
@@ -117,6 +122,27 @@ python scripts/run_dev.py --output-dir results/dev_run
 
 # With custom data fraction
 python scripts/run_dev.py --data-fraction 0.01 --output-dir results/dev_run
+```
+
+### Run Full Experiment
+
+```bash
+# Full experiment run (Ablation 1 + Ablation 2, 5 seeds each)
+# Estimated time: ~5 hours on A4500 GPU
+TOKENIZERS_PARALLELISM=false \
+HF_HOME=/workspace/experiments-penha-2025/.cache/huggingface \
+TRANSFORMERS_CACHE=/workspace/experiments-penha-2025/.cache/huggingface/transformers \
+TORCH_HOME=/workspace/experiments-penha-2025/.cache/torch \
+nohup python scripts/run_full.py \
+    --data-fraction 1.0 \
+    --n-seeds 5 \
+    --encoder-epochs 5 \
+    --gen-epochs 10 \
+    --output-dir /workspace/experiments-penha-2025/results/full_run \
+    > /workspace/experiments-penha-2025/results/full_run.log 2>&1 &
+
+# Monitor progress
+tail -f /workspace/experiments-penha-2025/results/full_run.log
 ```
 
 ### Run Tests
