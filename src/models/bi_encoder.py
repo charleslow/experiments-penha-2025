@@ -110,8 +110,22 @@ class BiEncoderModule(L.LightningModule):
         self.train_search_loss = MeanMetric()
         self.train_rec_loss = MeanMetric()
 
+    def encode_with_grad(self, texts: List[str]) -> torch.Tensor:
+        """Encode texts with gradient preservation for training."""
+        # Tokenize
+        features = self.encoder.tokenize(texts)
+
+        # Move to device
+        features = {k: v.to(self.device) for k, v in features.items()}
+
+        # Forward through model
+        output = self.encoder(features)
+
+        # Get sentence embeddings
+        return output["sentence_embedding"]
+
     def encode(self, texts: List[str]) -> torch.Tensor:
-        """Encode a list of texts to embeddings."""
+        """Encode a list of texts to embeddings (no gradient)."""
         return self.encoder.encode(
             texts,
             convert_to_tensor=True,
@@ -119,20 +133,20 @@ class BiEncoderModule(L.LightningModule):
         )
 
     def forward(self, texts: List[str]) -> torch.Tensor:
-        """Forward pass - encode texts."""
-        return self.encode(texts)
+        """Forward pass - encode texts with gradients."""
+        return self.encode_with_grad(texts)
 
     def compute_search_loss(self, batch: SearchBatch) -> torch.Tensor:
         """Compute contrastive loss for search task."""
-        query_emb = self.encode(batch.queries)
-        item_emb = self.encode(batch.items)
+        query_emb = self.encode_with_grad(batch.queries)
+        item_emb = self.encode_with_grad(batch.items)
         labels = batch.labels.to(query_emb.device)
         return self.loss_fn(query_emb, item_emb, labels)
 
     def compute_rec_loss(self, batch: RecBatch) -> torch.Tensor:
         """Compute contrastive loss for recommendation task."""
-        item1_emb = self.encode(batch.items1)
-        item2_emb = self.encode(batch.items2)
+        item1_emb = self.encode_with_grad(batch.items1)
+        item2_emb = self.encode_with_grad(batch.items2)
         labels = batch.labels.to(item1_emb.device)
         return self.loss_fn(item1_emb, item2_emb, labels)
 

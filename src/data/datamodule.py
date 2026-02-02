@@ -188,6 +188,16 @@ def rec_collate_fn(batch: List[Tuple]) -> RecBatch:
     )
 
 
+def generative_collate_fn(batch: List[Tuple]) -> Tuple[List[str], torch.Tensor, torch.Tensor]:
+    """Collate function for generative batches."""
+    queries, sem_ids, item_ids = zip(*batch)
+    return (
+        list(queries),
+        torch.tensor(sem_ids),
+        torch.tensor(item_ids),
+    )
+
+
 class SemanticIDDataModule(L.LightningDataModule):
     """Lightning DataModule for semantic ID training."""
 
@@ -291,6 +301,14 @@ class SemanticIDDataModule(L.LightningDataModule):
                     window_size=self.window_size,
                 )
 
+            if self.task == "generative" and self.semantic_ids:
+                self.test_gen_dataset = GenerativeDataset(
+                    items=self.items,
+                    queries=self.queries,
+                    semantic_ids=self.semantic_ids,
+                    interactions=self.test_interactions,
+                )
+
     def train_dataloader(self):
         """Return training dataloader(s)."""
         if self.task == "search":
@@ -331,6 +349,15 @@ class SemanticIDDataModule(L.LightningDataModule):
                     pin_memory=True,
                 ),
             }
+        elif self.task == "generative":
+            return DataLoader(
+                self.train_gen_dataset,
+                batch_size=self.batch_size,
+                shuffle=True,
+                num_workers=self.num_workers,
+                collate_fn=generative_collate_fn,
+                pin_memory=True,
+            )
         else:
             raise ValueError(f"Unknown task: {self.task}")
 
@@ -373,6 +400,15 @@ class SemanticIDDataModule(L.LightningDataModule):
                     pin_memory=True,
                 ),
             }
+        elif self.task == "generative":
+            return DataLoader(
+                self.val_gen_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.num_workers,
+                collate_fn=generative_collate_fn,
+                pin_memory=True,
+            )
         else:
             raise ValueError(f"Unknown task: {self.task}")
 
@@ -415,5 +451,14 @@ class SemanticIDDataModule(L.LightningDataModule):
                     pin_memory=True,
                 ),
             }
+        elif self.task == "generative":
+            return DataLoader(
+                self.test_gen_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.num_workers,
+                collate_fn=generative_collate_fn,
+                pin_memory=True,
+            )
         else:
             raise ValueError(f"Unknown task: {self.task}")
