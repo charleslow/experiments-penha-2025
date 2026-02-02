@@ -26,6 +26,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 
 import torch
+import torch.nn.functional as F
 import pandas as pd
 import numpy as np
 import lightning as L
@@ -56,6 +57,193 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class ValidationRecallCallback(L.Callback):
+    """
+    Callback to compute validation Recall@30 periodically during bi-encoder training.
+    Implements early stopping when R@30 plateaus.
+    """
+
+    def __init__(
+        self,
+        items: Dict[int, "MovieItem"],
+        queries: Dict[int, List[str]],
+        val_df: pd.DataFrame,
+        task: str,
+        patience: int = 2,
+        min_delta: float = 0.001,
+        eval_every_n_epochs: int = 1,
+    ):
+        """
+        Args:
+            items: Dictionary of item_id to MovieItem
+            queries: Dictionary of item_id to list of queries
+            val_df: Validation dataframe
+            task: Task type ("search", "rec", or "multi_task")
+            patience: Number of epochs without improvement before stopping
+            min_delta: Minimum change to qualify as improvement
+            eval_every_n_epochs: Evaluate every N epochs
+        """
+        super().__init__()
+        self.items = items
+        self.queries = queries
+        self.val_df = val_df
+        self.task = task
+        self.patience = patience
+        self.min_delta = min_delta
+        self.eval_every_n_epochs = eval_every_n_epochs
+
+        self.best_recall = 0.0
+        self.epochs_without_improvement = 0
+        self.recall_history = []
+
+    def on_train_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule):
+        """Compute validation R@30 after each epoch."""
+        current_epoch = trainer.current_epoch
+
+        # Only evaluate every N epochs
+        if (current_epoch + 1) % self.eval_every_n_epochs != 0:
+            return
+
+        # Compute R@30 on validation set
+        recall_30 = self._compute_recall_at_k(pl_module, k=30)
+        self.recall_history.append(recall_30)
+
+        logger.info(f"Epoch {current_epoch}: Val R@30 = {recall_30:.4f} (best = {self.best_recall:.4f})")
+
+        # Log to trainer
+        pl_module.log("val/Recall@30", recall_30, on_epoch=True, prog_bar=True)
+
+        # Check for improvement
+        if recall_30 > self.best_recall + self.min_delta:
+            self.best_recall = recall_30
+            self.epochs_without_improvement = 0
+            logger.info(f"  -> New best R@30!")
+        else:
+            self.epochs_without_improvement += 1
+            logger.info(f"  -> No improvement for {self.epochs_without_improvement}/{self.patience} epochs")
+
+            if self.epochs_without_improvement >= self.patience:
+                logger.info(f"Early stopping: R@30 plateaued at {self.best_recall:.4f}")
+                trainer.should_stop = True
+
+    def _compute_recall_at_k(self, model: L.LightningModule, k: int = 30) -> float:
+        """Compute Recall@k on validation set."""
+        model.eval()
+
+        # Get all item embeddings
+        item_ids = sorted(self.items.keys())
+        item_texts = [self.items[iid].text for iid in item_ids]
+        item_id_to_idx = {iid: idx for idx, iid in enumerate(item_ids)}
+
+        with torch.no_grad():
+            item_embeddings = model.get_item_embeddings(item_texts, batch_size=128)
+
+        if self.task in ["search", "multi_task"]:
+            # Evaluate query-to-item retrieval
+            query_list = []
+            target_idxs = []
+
+            # Sample items for efficiency (use up to 1000 items)
+            val_item_ids = self.val_df["item_id"].unique()
+            if len(val_item_ids) > 1000:
+                val_item_ids = np.random.choice(val_item_ids, 1000, replace=False)
+
+            for item_id in val_item_ids:
+                if item_id in self.queries and self.queries[item_id] and item_id in item_id_to_idx:
+                    query_list.append(self.queries[item_id][0])  # First query
+                    target_idxs.append(item_id_to_idx[item_id])
+
+            if not query_list:
+                return 0.0
+
+            with torch.no_grad():
+                query_embeddings = model.encode(query_list)
+                if isinstance(query_embeddings, np.ndarray):
+                    query_embeddings = torch.tensor(query_embeddings)
+
+                # Move to CPU for large matrix ops
+                query_embeddings = query_embeddings.cpu()
+                item_embeddings = item_embeddings.cpu()
+
+                # Normalize
+                query_embeddings = F.normalize(query_embeddings, p=2, dim=-1)
+                item_embeddings = F.normalize(item_embeddings, p=2, dim=-1)
+
+                # Compute similarities
+                similarities = torch.matmul(query_embeddings, item_embeddings.t())
+
+                # Get top-k
+                _, top_k_indices = torch.topk(similarities, k=min(k, similarities.size(1)), dim=1)
+
+                # Compute recall
+                hits = 0
+                for i, target_idx in enumerate(target_idxs):
+                    if target_idx in top_k_indices[i].tolist():
+                        hits += 1
+
+                recall = hits / len(target_idxs)
+
+            return recall
+
+        elif self.task == "rec":
+            # Evaluate item-to-item retrieval
+            from src.data.movielens import get_cooccurrence_pairs
+
+            # Sample for efficiency
+            if len(self.val_df) > 50000:
+                val_df_sample = self.val_df.sample(n=50000, random_state=42)
+            else:
+                val_df_sample = self.val_df
+
+            cooc = get_cooccurrence_pairs(val_df_sample, window_size=5)
+            if len(cooc) == 0:
+                return 0.0
+
+            # Sample pairs
+            if len(cooc) > 500:
+                cooc = cooc.sample(n=500, random_state=42)
+
+            query_item_ids = cooc["item1"].tolist()
+            target_item_ids = cooc["item2"].tolist()
+
+            query_texts = [self.items[iid].text for iid in query_item_ids if iid in self.items]
+            if not query_texts:
+                return 0.0
+
+            with torch.no_grad():
+                query_embeddings = model.encode(query_texts)
+                if isinstance(query_embeddings, np.ndarray):
+                    query_embeddings = torch.tensor(query_embeddings)
+
+                # Move to CPU
+                query_embeddings = query_embeddings.cpu()
+                item_embeddings = item_embeddings.cpu()
+
+                # Normalize
+                query_embeddings = F.normalize(query_embeddings, p=2, dim=-1)
+                item_embeddings = F.normalize(item_embeddings, p=2, dim=-1)
+
+                # Compute similarities
+                similarities = torch.matmul(query_embeddings, item_embeddings.t())
+
+                # Get top-k
+                _, top_k_indices = torch.topk(similarities, k=min(k, similarities.size(1)), dim=1)
+
+                # Compute recall
+                hits = 0
+                for i, target_id in enumerate(target_item_ids[:len(query_texts)]):
+                    if target_id in item_id_to_idx:
+                        target_idx = item_id_to_idx[target_id]
+                        if target_idx in top_k_indices[i].tolist():
+                            hits += 1
+
+                recall = hits / len(query_texts) if query_texts else 0.0
+
+            return recall
+
+        return 0.0
+
+
 @dataclass
 class FullRunConfig:
     """Configuration for full experiment run.
@@ -72,7 +260,7 @@ class FullRunConfig:
 
     # Bi-encoder
     encoder_model: str = "sentence-transformers/all-mpnet-base-v2"
-    encoder_epochs: int = 5
+    encoder_epochs: int = 10  # Max epochs, will early stop when R@30 plateaus
     encoder_batch: int = 64  # Reduced for A4500 VRAM
     encoder_lr: float = 2e-5
 
@@ -258,18 +446,22 @@ def train_biencoder_for_strategy(
             dirpath=output_dir / "checkpoints",
             filename=f"biencoder_{strategy}_seed{seed}_{{epoch}}",
             save_top_k=1,
-            monitor="val/loss",
-            mode="min",
+            monitor="val/Recall@30",
+            mode="max",
         )
         callbacks.append(checkpoint_callback)
 
-    # Use train loss for early stopping since multi-task has multiple val dataloaders
-    early_stop_callback = EarlyStopping(
-        monitor="train/loss_epoch",
+    # Use validation R@30 for early stopping (stops when performance plateaus)
+    val_recall_callback = ValidationRecallCallback(
+        items=items,
+        queries=queries,
+        val_df=val_df,
+        task=strategy,
         patience=config.patience,
-        mode="min",
+        min_delta=0.001,
+        eval_every_n_epochs=1,
     )
-    callbacks.append(early_stop_callback)
+    callbacks.append(val_recall_callback)
 
     # Trainer
     trainer = L.Trainer(
@@ -522,10 +714,15 @@ def evaluate_biencoder_retrieval(
         with torch.no_grad():
             query_embeddings = model.encode(query_list)
 
-        relevance_matrix = torch.stack(relevance)
+        # Ensure all tensors are on the same device (CPU for large eval)
+        device = "cpu"
+        relevance_matrix = torch.stack(relevance).to(device)
+        query_embeddings = query_embeddings.to(device) if isinstance(query_embeddings, torch.Tensor) else torch.tensor(query_embeddings).to(device)
+        item_embeddings_eval = item_embeddings.to(device)
+
         results = evaluate_retrieval(
             query_embeddings=query_embeddings,
-            item_embeddings=item_embeddings,
+            item_embeddings=item_embeddings_eval,
             relevance_labels=relevance_matrix,
             k_values=[10, 20, 30],  # Paper uses R@30
         )
@@ -534,7 +731,14 @@ def evaluate_biencoder_retrieval(
         # Evaluate item-to-item retrieval (next item prediction)
         from src.data.movielens import get_cooccurrence_pairs
 
-        cooc = get_cooccurrence_pairs(test_df, window_size=5)
+        # Sample test_df first to avoid slow co-occurrence computation
+        # Only need a subset for evaluation
+        if len(test_df) > 100000:
+            test_df_sample = test_df.sample(n=100000, random_state=42)
+        else:
+            test_df_sample = test_df
+
+        cooc = get_cooccurrence_pairs(test_df_sample, window_size=5)
         if len(cooc) == 0:
             return {"Recall@30": 0.0}
 
@@ -560,10 +764,15 @@ def evaluate_biencoder_retrieval(
                 rel[item_id_to_idx[target_id]] = 1.0
             relevance.append(rel)
 
-        relevance_matrix = torch.stack(relevance)
+        # Ensure all tensors are on the same device (CPU for large eval)
+        device = "cpu"
+        relevance_matrix = torch.stack(relevance).to(device)
+        query_embeddings = query_embeddings.to(device) if isinstance(query_embeddings, torch.Tensor) else torch.tensor(query_embeddings).to(device)
+        item_embeddings_eval = item_embeddings.to(device)
+
         results = evaluate_retrieval(
             query_embeddings=query_embeddings,
-            item_embeddings=item_embeddings,
+            item_embeddings=item_embeddings_eval,
             relevance_labels=relevance_matrix,
             k_values=[10, 20, 30],  # Paper uses R@30
         )

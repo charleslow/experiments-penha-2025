@@ -93,13 +93,15 @@ class RQKMeansDiscretizer(BaseDiscretizer):
             )
             kmeans.fit(residuals.cpu().numpy())
 
-            # Store centroids
+            # Store centroids (keep on CPU for memory efficiency)
             centroids = torch.from_numpy(kmeans.cluster_centers_).float()
             self.centroids.append(centroids)
 
             # Compute new residuals
             assignments = torch.from_numpy(kmeans.labels_).long()
-            quantized = centroids[assignments]
+            # Move to same device as residuals for computation
+            device = residuals.device
+            quantized = centroids.to(device)[assignments.to(device)]
             residuals = residuals - quantized
 
         self._is_fitted = True

@@ -12,15 +12,23 @@ from .movielens import MovieItem
 
 logger = logging.getLogger(__name__)
 
-# Prompt template for query generation
-QUERY_PROMPT = """Generate {n} diverse search queries that a user might type to find this movie.
-The queries should be natural language questions or search phrases.
+# Prompt template for query generation (from Penha et al. 2025)
+QUERY_PROMPT = """Your task is to return a list with {n} queries for a given movie (title of the movie, year and description and tags). After generating the initial set of queries, you should also generate a list of the same size with paraphrased versions of the first queries. The paraphrased queries should be similar to the original queries, but with different words, structure and slight variations in the meaning. The queries should be realistic things that a user would ask to find the movie. The queries should be diverse and cover different aspects of the movie. The queries should not include the title of the movie, but be broader descriptions of the movie and its content. The queries should also contain broad topics, themes and genres of the movie.
 
-Movie: {title}
+Movie:
+Title: {title}
 Year: {year}
 Genres: {genres}
+Description: {description}
 
-Generate exactly {n} queries, one per line. Only output the queries, nothing else."""
+Generate exactly {n} queries and {n} paraphrased versions. Output format:
+Original queries (one per line):
+1. [query]
+...
+
+Paraphrased queries (one per line):
+1. [query]
+..."""
 
 
 def generate_queries_for_item(
@@ -45,11 +53,21 @@ def generate_queries_for_item(
     Returns:
         List of generated queries
     """
+    # Get description from item text (after title and genres)
+    description = ""
+    if hasattr(item, 'text') and item.text:
+        # item.text is typically "Title (Year) - Genres"
+        # Try to extract any additional description
+        parts = item.text.split(" - ")
+        if len(parts) > 1:
+            description = parts[-1]  # Use genres/tags as description
+
     prompt = QUERY_PROMPT.format(
         n=n_queries,
         title=item.title,
         year=item.year or "Unknown",
         genres=", ".join(item.genres) if item.genres else "Unknown",
+        description=description or ", ".join(item.genres) if item.genres else "A movie",
     )
 
     messages = [{"role": "user", "content": prompt}]
@@ -164,6 +182,9 @@ def generate_synthetic_queries(
     Generate simple synthetic queries without an LLM.
     Useful for testing and dev runs.
 
+    IMPORTANT: Queries should NOT include the movie title to be meaningful.
+    They should describe the movie's themes, genres, and content.
+
     Args:
         items: Dictionary of item_id to MovieItem
         n_queries: Number of queries per item
@@ -172,29 +193,61 @@ def generate_synthetic_queries(
         Dictionary mapping item_id to list of queries
     """
     queries = {}
+    # Templates that don't include the title - describe movie by content/genre/themes
     templates = [
-        "Find {title}",
-        "{genre} movie {title}",
-        "Looking for {title} from {year}",
-        "Movie called {title}",
-        "{genre} film {year}",
+        "{genre} movie from {year}",
+        "{genre} film with {theme} themes",
+        "Looking for a {genre} movie",
+        "{decade}s {genre} film",
+        "Movie about {theme}",
+        "{genre} {genre2} film",
+        "Classic {genre} from the {decade}s",
+        "A {mood} {genre} movie",
     ]
+
+    # Common themes/moods by genre for variety
+    genre_themes = {
+        "Action": ["adventure", "heroes", "explosions", "fighting"],
+        "Comedy": ["funny", "humor", "laughs", "jokes"],
+        "Drama": ["emotional", "relationships", "life", "struggles"],
+        "Horror": ["scary", "supernatural", "terror", "suspense"],
+        "Sci-Fi": ["future", "space", "technology", "aliens"],
+        "Romance": ["love", "relationships", "passion", "heart"],
+        "Thriller": ["suspense", "mystery", "tension", "danger"],
+        "Animation": ["animated", "family", "colorful", "cartoon"],
+        "Documentary": ["real", "informative", "educational", "factual"],
+        "Fantasy": ["magic", "mythical", "adventure", "supernatural"],
+    }
+
+    moods = ["exciting", "touching", "thrilling", "fun", "intense", "moving", "gripping"]
+
+    import random
 
     for item_id, item in items.items():
         item_queries = []
         genre = item.genres[0] if item.genres else "drama"
+        genre2 = item.genres[1] if item.genres and len(item.genres) > 1 else "drama"
         year = item.year or 2000
+        decade = (year // 10) * 10
+
+        themes = genre_themes.get(genre, ["interesting", "compelling", "engaging"])
 
         for i in range(n_queries):
             template = templates[i % len(templates)]
+            theme = themes[i % len(themes)]
+            mood = moods[i % len(moods)]
+
             query = template.format(
-                title=item.title,
-                genre=genre,
+                genre=genre.lower(),
+                genre2=genre2.lower(),
                 year=year,
+                decade=decade,
+                theme=theme,
+                mood=mood,
             )
             item_queries.append(query)
 
         queries[item_id] = item_queries
 
-    logger.info(f"Generated synthetic queries for {len(queries)} items")
+    logger.info(f"Generated synthetic queries for {len(queries)} items (without titles)")
     return queries

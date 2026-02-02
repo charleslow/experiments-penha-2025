@@ -91,6 +91,7 @@ class RecDataset(Dataset):
         items: Dict[int, MovieItem],
         interactions: pd.DataFrame,
         window_size: int = 5,
+        max_pairs: int = 500000,  # Limit pairs to make training feasible
     ):
         """
         Initialize the rec dataset.
@@ -99,6 +100,7 @@ class RecDataset(Dataset):
             items: Dictionary of item_id to MovieItem
             interactions: DataFrame with user_id, item_id, timestamp
             window_size: Window size for co-occurrence
+            max_pairs: Maximum number of co-occurrence pairs to use (for training efficiency)
         """
         self.items = items
         self.item_ids = list(items.keys())
@@ -113,7 +115,14 @@ class RecDataset(Dataset):
             (i1, i2) for i1, i2 in self.pairs if i1 in valid_ids and i2 in valid_ids
         ]
 
-        logger.info(f"RecDataset: {len(self.pairs)} co-occurrence pairs")
+        # Sample if too many pairs (for training efficiency)
+        if max_pairs > 0 and len(self.pairs) > max_pairs:
+            import random
+            random.shuffle(self.pairs)
+            self.pairs = self.pairs[:max_pairs]
+            logger.info(f"RecDataset: Sampled {len(self.pairs)} pairs from {len(cooc)} total")
+        else:
+            logger.info(f"RecDataset: {len(self.pairs)} co-occurrence pairs")
 
     def __len__(self) -> int:
         return len(self.pairs)
@@ -213,6 +222,7 @@ class SemanticIDDataModule(L.LightningDataModule):
         batch_size: int = 64,
         num_workers: int = 4,
         window_size: int = 5,
+        max_rec_pairs: int = 500000,  # Limit rec pairs for training efficiency
     ):
         """
         Initialize the DataModule.
@@ -228,6 +238,7 @@ class SemanticIDDataModule(L.LightningDataModule):
             batch_size: Batch size
             num_workers: Number of data loading workers
             window_size: Window size for co-occurrence pairs
+            max_rec_pairs: Maximum number of rec co-occurrence pairs (for training efficiency)
         """
         super().__init__()
         self.items = items
@@ -240,6 +251,7 @@ class SemanticIDDataModule(L.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.window_size = window_size
+        self.max_rec_pairs = max_rec_pairs
 
         self.train_dataset = None
         self.val_dataset = None
@@ -265,11 +277,13 @@ class SemanticIDDataModule(L.LightningDataModule):
                     items=self.items,
                     interactions=self.train_interactions,
                     window_size=self.window_size,
+                    max_pairs=self.max_rec_pairs,
                 )
                 self.val_rec_dataset = RecDataset(
                     items=self.items,
                     interactions=self.val_interactions,
                     window_size=self.window_size,
+                    max_pairs=self.max_rec_pairs // 5,  # Smaller for validation
                 )
 
             if self.task == "generative" and self.semantic_ids:
@@ -299,6 +313,7 @@ class SemanticIDDataModule(L.LightningDataModule):
                     items=self.items,
                     interactions=self.test_interactions,
                     window_size=self.window_size,
+                    max_pairs=self.max_rec_pairs,  # Same as train for test
                 )
 
             if self.task == "generative" and self.semantic_ids:
