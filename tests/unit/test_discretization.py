@@ -182,6 +182,82 @@ class TestLSHDiscretizer:
         assert len(state["projections"]) == 2
 
 
+class TestRQVAEDiscretizer:
+    """Tests for RQVAEDiscretizer."""
+
+    @pytest.fixture
+    def sample_embeddings(self):
+        torch.manual_seed(42)
+        n_samples = 200
+        embedding_dim = 64
+        return torch.randn(n_samples, embedding_dim)
+
+    def test_initialization(self):
+        from src.discretization.rq_vae import RQVAEDiscretizer
+
+        discretizer = RQVAEDiscretizer(
+            n_hierarchies=2,
+            codebook_size=32,
+            embedding_dim=64,
+        )
+        assert discretizer.n_hierarchies == 2
+        assert discretizer.codebook_size == 32
+        assert not discretizer.is_fitted
+
+    def test_fit_encode(self, sample_embeddings):
+        from src.discretization.rq_vae import RQVAEDiscretizer
+
+        discretizer = RQVAEDiscretizer(
+            n_hierarchies=2,
+            codebook_size=32,
+            embedding_dim=64,
+            num_epochs=2,  # Quick for testing
+            batch_size=64,
+        )
+
+        discretizer.fit(sample_embeddings)
+        assert discretizer.is_fitted
+
+        codes = discretizer.encode(sample_embeddings)
+        assert codes.shape == (200, 2)
+        assert codes.min() >= 0
+        assert codes.max() < 32
+
+    def test_decode(self, sample_embeddings):
+        from src.discretization.rq_vae import RQVAEDiscretizer
+
+        discretizer = RQVAEDiscretizer(
+            n_hierarchies=2,
+            codebook_size=32,
+            embedding_dim=64,
+            num_epochs=2,
+            batch_size=64,
+        )
+
+        discretizer.fit(sample_embeddings)
+        codes = discretizer.encode(sample_embeddings)
+        reconstructed = discretizer.decode(codes)
+
+        assert reconstructed.shape == sample_embeddings.shape
+
+    def test_reconstruction_error(self, sample_embeddings):
+        from src.discretization.rq_vae import RQVAEDiscretizer
+
+        discretizer = RQVAEDiscretizer(
+            n_hierarchies=2,
+            codebook_size=32,
+            embedding_dim=64,
+            num_epochs=3,
+            batch_size=64,
+        )
+
+        discretizer.fit(sample_embeddings)
+        mse = discretizer.reconstruction_error(sample_embeddings)
+
+        assert mse >= 0
+        assert np.isfinite(mse)
+
+
 class TestPQDiscretizer:
     """Tests for PQDiscretizer (requires FAISS)."""
 

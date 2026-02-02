@@ -50,7 +50,7 @@ def run_dev_experiment(
     from src.data.query_generator import generate_synthetic_queries
     from src.data.datamodule import SemanticIDDataModule
     from src.models.bi_encoder import BiEncoderModule
-    from src.discretization import RQKMeansDiscretizer, LSHDiscretizer, PQDiscretizer
+    from src.discretization import RQKMeansDiscretizer, RQVAEDiscretizer, LSHDiscretizer, PQDiscretizer
     from src.evaluation.metrics import evaluate_retrieval
     from src.visualization.plots import (
         plot_embedding_ablation,
@@ -75,13 +75,29 @@ def run_dev_experiment(
     logger.info("Phase 1: Loading data")
     logger.info("=" * 50)
 
-    # Check for raw data - use local test data if MovieLens not available
+    # Try to load real MovieLens data, fall back to synthetic if not available
     raw_dir = Path("/app/data/raw/ml-25m")
+    use_synthetic = False
+
     if not raw_dir.exists():
-        logger.warning(f"MovieLens data not found at {raw_dir}")
-        logger.info("Creating synthetic test data for dev run")
-        interactions, items = create_synthetic_data(n_items=100, n_users=50, n_interactions=1000)
+        # Try alternate location
+        alt_dir = Path("data/raw/ml-25m")
+        if alt_dir.exists():
+            raw_dir = alt_dir
+        else:
+            logger.warning(f"MovieLens data not found at {raw_dir} or {alt_dir}")
+            logger.warning("Run 'python scripts/download_data.py' to download MovieLens-25M")
+            logger.info("Falling back to synthetic data for dev run")
+            use_synthetic = True
+
+    if use_synthetic:
+        interactions, items = create_synthetic_data(
+            n_items=500,  # Larger synthetic dataset
+            n_users=200,
+            n_interactions=5000,
+        )
     else:
+        logger.info(f"Loading MovieLens data from {raw_dir} (fraction={config.data_fraction})")
         interactions, items = load_movielens(
             data_dir=raw_dir,
             fraction=config.data_fraction,
@@ -158,10 +174,22 @@ def run_dev_experiment(
     logger.info("Phase 3: Discretization")
     logger.info("=" * 50)
 
+    # Use multi_task embeddings for discretization comparison
+    base_embeddings = embeddings["multi_task"]
+    embedding_dim = base_embeddings.shape[1]
+    n_items = len(items)
+
     discretization_methods = {
         "rq_kmeans": RQKMeansDiscretizer(
             n_hierarchies=config.n_hierarchies,
             codebook_size=config.codebook_size,
+        ),
+        "rq_vae": RQVAEDiscretizer(
+            n_hierarchies=config.n_hierarchies,
+            codebook_size=config.codebook_size,
+            embedding_dim=embedding_dim,
+            num_epochs=5,  # Quick training for dev
+            batch_size=128,
         ),
         "lsh": LSHDiscretizer(
             n_hierarchies=config.n_hierarchies,
@@ -173,7 +201,6 @@ def run_dev_experiment(
     try:
         import faiss
         # PQ requires n_samples >= codebook_size
-        n_items = len(items)
         if n_items >= config.codebook_size:
             # PQ requires embedding_dim divisible by n_hierarchies
             # Use 2 hierarchies for 384-dim embeddings
@@ -188,9 +215,6 @@ def run_dev_experiment(
 
     semantic_ids = {}
     discretization_results = {}
-
-    # Use multi_task embeddings for discretization comparison
-    base_embeddings = embeddings["multi_task"]
 
     for method_name, discretizer in discretization_methods.items():
         logger.info(f"Fitting {method_name} discretizer...")
