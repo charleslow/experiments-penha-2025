@@ -197,3 +197,45 @@ A test run is in progress:
 |--------|-------------|----------|
 | RQ-KMeans | 0.046 | 0.049 |
 | RQ-VAE | 0.002 | 0.024 |
+
+---
+
+## Experiment Phases
+
+The experiment is structured into 3 phases for efficient iteration:
+
+### Phase 1: Dev Run (Quick Validation)
+- **Purpose**: Verify pipeline works end-to-end
+- **Data**: Synthetic or small fraction of MovieLens
+- **Seeds**: 1
+- **Time**: < 10 minutes
+- **Script**: `scripts/run_dev.py`
+
+### Phase 2: Single Run per Config (Metric Validation)
+- **Purpose**: Validate metrics are in ballpark of paper results
+- **Data**: Full MovieLens-25M
+- **Seeds**: 1
+- **Approach**:
+  1. Train bi-encoder ONCE per strategy (search, rec, multi_task)
+  2. Freeze bi-encoder embeddings
+  3. Run 1 discretization + generative training per config
+- **Expected Time**: ~3-4 hours
+- **Validation**: Check if R@30 matches paper within reasonable tolerance
+
+### Phase 3: Full Statistical Run (5 Seeds)
+- **Purpose**: Get mean ± std error for publication-quality results
+- **Data**: Full MovieLens-25M
+- **Seeds**: 5 (42, 123, 456, 789, 1024)
+- **Approach**:
+  1. Use frozen bi-encoder from Phase 2
+  2. Run 5 seeds ONLY for discretization + generative model
+  3. Aggregate results
+- **Expected Time**: ~10-15 hours
+- **Output**: Final results with statistical significance
+
+### Efficiency Insight
+The bi-encoder only needs to be trained ONCE per strategy since it creates deterministic embeddings. The variance in results comes from:
+- Discretization (k-means initialization)
+- Generative model training (random initialization)
+
+Therefore, we train bi-encoder once and run 5 seeds only for the latter stages.

@@ -58,7 +58,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class FullRunConfig:
-    """Configuration for full experiment run."""
+    """Configuration for full experiment run.
+
+    Supports 3 phases:
+    - Phase 1: Dev run (quick validation)
+    - Phase 2: Single run per config (train bi-encoder, validate metrics)
+    - Phase 3: Full 5-seed run (reuse bi-encoder, run 5 seeds for gen model)
+    """
 
     # Data
     data_fraction: float = 1.0
@@ -92,6 +98,13 @@ class FullRunConfig:
 
     # Early stopping
     patience: int = 3
+
+    # Phase control
+    # Phase 2: train bi-encoder once (n_encoder_seeds=1), run gen once (n_seeds=1)
+    # Phase 3: reuse bi-encoder from phase 2, run gen 5 times (n_seeds=5)
+    n_encoder_seeds: int = 1  # How many seeds for bi-encoder training (usually 1)
+    cache_embeddings: bool = True  # Cache and reuse bi-encoder embeddings
+    embeddings_cache_dir: Optional[Path] = None  # Where to cache embeddings
 
 
 def create_synthetic_data(n_items: int = 100, n_users: int = 50, n_interactions: int = 1000):
@@ -162,6 +175,45 @@ def load_data(config: FullRunConfig, force: bool = False):
     )
 
     return items, train_df, val_df, test_df
+
+
+def get_embeddings_cache_path(config: FullRunConfig, strategy: str) -> Path:
+    """Get path for cached embeddings."""
+    cache_dir = config.embeddings_cache_dir or (config.output_dir / "embeddings_cache")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / f"{strategy}_embeddings.pt"
+
+
+def load_cached_embeddings(
+    config: FullRunConfig, strategy: str, items: Dict[int, MovieItem]
+) -> Optional[Tuple[torch.Tensor, List[int]]]:
+    """Load cached embeddings if available."""
+    cache_path = get_embeddings_cache_path(config, strategy)
+    if cache_path.exists():
+        logger.info(f"Loading cached embeddings from {cache_path}")
+        cached = torch.load(cache_path)
+        # Verify item count matches
+        if len(cached["item_ids"]) == len(items):
+            return cached["embeddings"], cached["item_ids"]
+        else:
+            logger.warning(f"Cache item count mismatch: {len(cached['item_ids'])} vs {len(items)}")
+    return None
+
+
+def save_embeddings_cache(
+    config: FullRunConfig,
+    strategy: str,
+    embeddings: torch.Tensor,
+    item_ids: List[int]
+):
+    """Save embeddings to cache."""
+    cache_path = get_embeddings_cache_path(config, strategy)
+    logger.info(f"Saving embeddings cache to {cache_path}")
+    torch.save({
+        "embeddings": embeddings.cpu(),
+        "item_ids": item_ids,
+        "strategy": strategy,
+    }, cache_path)
 
 
 def train_biencoder_for_strategy(
@@ -237,11 +289,16 @@ def train_biencoder_for_strategy(
 
     # Get item embeddings
     model.eval()
-    item_texts = [items[iid].text for iid in sorted(items.keys())]
+    item_ids = sorted(items.keys())
+    item_texts = [items[iid].text for iid in item_ids]
     with torch.no_grad():
         embeddings = model.get_item_embeddings(item_texts, batch_size=128)
 
     logger.info(f"Generated {strategy} embeddings: {embeddings.shape}")
+
+    # Cache embeddings if enabled
+    if config.cache_embeddings:
+        save_embeddings_cache(config, strategy, embeddings, item_ids)
 
     return model, embeddings
 
@@ -532,7 +589,11 @@ def run_ablation1_embedding_strategy(
     test_df: pd.DataFrame,
     output_dir: Path,
 ) -> List[ExperimentResults]:
-    """Run Ablation 1: Compare embedding strategies with fixed RQ-KMeans."""
+    """Run Ablation 1: Compare embedding strategies with fixed RQ-KMeans.
+
+    Bi-encoder is trained only once per strategy (n_encoder_seeds=1 by default).
+    Embeddings are cached and reused for all generative model seeds.
+    """
     logger.info("=" * 60)
     logger.info("ABLATION 1: Embedding Strategy Comparison")
     logger.info("=" * 60)
@@ -540,22 +601,42 @@ def run_ablation1_embedding_strategy(
     results = []
 
     for strategy in config.embedding_strategies:
+        # Try to load cached embeddings first
+        cached = load_cached_embeddings(config, strategy, items) if config.cache_embeddings else None
+        embeddings = None
+        model = None
+
         for seed_idx, seed in enumerate(config.seeds[:config.n_seeds]):
             run_start = time.time()
             logger.info(f"\n--- {strategy} (seed {seed}, run {seed_idx + 1}/{config.n_seeds}) ---")
 
             try:
-                # Train bi-encoder
-                model, embeddings = train_biencoder_for_strategy(
-                    strategy=strategy,
-                    items=items,
-                    queries=queries,
-                    train_df=train_df,
-                    val_df=val_df,
-                    config=config,
-                    seed=seed,
-                    output_dir=output_dir,
-                )
+                # Train bi-encoder only if:
+                # 1. No cached embeddings, AND
+                # 2. First seed OR n_encoder_seeds > seed_idx
+                if cached is not None:
+                    logger.info(f"Using cached embeddings for {strategy}")
+                    embeddings = cached[0].to("cuda" if torch.cuda.is_available() else "cpu")
+                    # Create a minimal model for evaluation (load pretrained)
+                    if model is None:
+                        model = BiEncoderModule(
+                            model_name=config.encoder_model,
+                            task=strategy,
+                        )
+                elif embeddings is None or seed_idx < config.n_encoder_seeds:
+                    # Train bi-encoder
+                    model, embeddings = train_biencoder_for_strategy(
+                        strategy=strategy,
+                        items=items,
+                        queries=queries,
+                        train_df=train_df,
+                        val_df=val_df,
+                        config=config,
+                        seed=seed,
+                        output_dir=output_dir,
+                    )
+                else:
+                    logger.info(f"Reusing embeddings from first seed for {strategy}")
 
                 # Discretize with RQ-KMeans (fixed for ablation 1)
                 codes, mse = run_discretization(
@@ -922,6 +1003,23 @@ def main():
         action="store_true",
         help="Save model checkpoints (requires disk space)",
     )
+    parser.add_argument(
+        "--n-encoder-seeds",
+        type=int,
+        default=1,
+        help="Number of seeds for bi-encoder training (default 1, embeddings are reused)",
+    )
+    parser.add_argument(
+        "--no-cache-embeddings",
+        action="store_true",
+        help="Disable embedding caching (retrain bi-encoder for each seed)",
+    )
+    parser.add_argument(
+        "--embeddings-cache-dir",
+        type=Path,
+        default=None,
+        help="Directory for cached embeddings (default: output_dir/embeddings_cache)",
+    )
 
     args = parser.parse_args()
 
@@ -933,6 +1031,9 @@ def main():
         gen_epochs=args.gen_epochs,
         output_dir=args.output_dir,
         save_checkpoints=args.save_checkpoints,
+        n_encoder_seeds=args.n_encoder_seeds,
+        cache_embeddings=not args.no_cache_embeddings,
+        embeddings_cache_dir=args.embeddings_cache_dir,
     )
 
     logger.info("=" * 80)
