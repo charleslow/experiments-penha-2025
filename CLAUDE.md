@@ -19,28 +19,6 @@ For any build instructions, add them to `instructions.md`. Examples include `doc
 
 All processed data is cached on RunPod local disk to avoid recomputation. Scripts must check if output exists before recomputing.
 
-```
-/app/data/
-├── raw/
-│   └── ml-25m/                    # MovieLens25M (~250MB)
-├── processed/
-│   └── splits/                    # Train/test splits (~50MB)
-│       ├── train_interactions.parquet
-│       ├── test_interactions.parquet
-│       └── item_metadata.parquet
-├── embeddings/                    # Bi-encoder outputs (~200MB per strategy)
-│   ├── search/                    # Search-only bi-encoder
-│   ├── rec/                       # Rec-only bi-encoder
-│   ├── multitask/                 # Multi-task bi-encoder
-│   └── fused/                     # Concatenated search + rec
-├── semantic_ids/                  # Discretized IDs (~10MB per method)
-│   ├── rq_kmeans/
-│   └── rq_vae/
-└── queries/                       # Synthetic queries (~50MB)
-    ├── train/
-    └── test/
-```
-
 **Caching rules:**
 - Before processing, check if output file/directory exists
 - Use deterministic filenames based on config (e.g., `embeddings/multitask/mpnet_768d.pt`)
@@ -54,3 +32,7 @@ Follow the allowed list for running commands, but do not try to sneak unsafe com
 # progress.md
 
 On long running tasks, keep track of your progress in progress.md. The logs should be in a diary style, where instead of having comprehensive bullet point summaries, you decide what information is important and relay it to the user. Also document any snags you encounter on the way. Be reflective and think about whether the progress is on track to meet the goals of the experiment.
+
+# lessons.md
+
+Distill key lessons you learn along the way into lessons.md. Each lesson starts with a markdown header with an intuitive title. Extract general lessons that will be useful for an agent operating in this repo.

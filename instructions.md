@@ -170,38 +170,3 @@ python scripts/generate_queries.py --dev
 # Generate queries with LLM (requires GPU)
 python scripts/generate_queries.py --model Qwen/Qwen2.5-3B-Instruct
 ```
-
-### Project Structure
-
-```
-src/
-├── config.py                 # Configuration dataclasses
-├── data/                     # Data loading and processing
-│   ├── movielens.py          # MovieLens dataset
-│   ├── query_generator.py    # Query generation
-│   └── datamodule.py         # Lightning DataModule
-├── models/                   # Model implementations
-│   ├── bi_encoder.py         # Contrastive bi-encoder
-│   └── generative.py         # T5 generative model
-├── discretization/           # Embedding discretization
-│   ├── base.py               # Abstract interface
-│   ├── rq_kmeans.py          # RQ-KMeans
-│   ├── lsh.py                # LSH
-│   └── pq.py                 # Product Quantization
-├── evaluation/               # Metrics
-│   └── metrics.py            # NDCG, Recall, etc.
-├── visualization/            # Plotting
-│   └── plots.py              # Result visualization
-└── utils/                    # Utilities
-    ├── cache.py              # Artifact caching
-    └── seed.py               # Reproducibility
-
-scripts/
-├── download_data.py          # Download MovieLens
-├── generate_queries.py       # Query generation
-└── run_dev.py                # Dev run entry point
-
-tests/
-├── unit/                     # Fast unit tests
-└── integration/              # Full pipeline tests
-```
