@@ -1,172 +1,25 @@
-# RunPod Setup Instructions
+# Replicate Penha 2025
 
-## RunPod Template Settings
+Semantic IDs for Joint Generative Search and Recommendation
+Paper: https://arxiv.org/abs/2508.10478
+Paper summary: https://charleslow.github.io/notebook/book/papers/penha_2025.html
 
-- **Image**: `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04`
-- **Container Start Command**:
+The goal of this repo is to perform experiments to validate the results from penha 2025. We do not need to replicate all results, just the important ones.
 
-```bash
-bash -lc '
-cat >/post_start.sh <<'"'"'EOF'"'"'
-#!/usr/bin/env bash
-set -euo pipefail
+The main goal is to show that:
+1. RQVAE is poorer than RQ-kmeans when doing semantic ID recommendation
+2. Semantic IDs trained on query-specific embeddings do poorly on recommendation and vice versa
+3. Using their multi-task method creates semantic IDs that do decently on either task
 
-REPO_DIR=/workspace/experiments-penha-2025
-REPO_URL=https://github.com/charleslow/experiments-penha-2025.git
-
-mkdir -p /workspace
-
-if [ ! -d "$REPO_DIR/.git" ]; then
-  git clone "$REPO_URL" "$REPO_DIR"
-fi
-
-if ! id claude-user &>/dev/null; then
-  useradd -m -s /bin/bash claude-user
-fi
-
-cd "$REPO_DIR"
-git pull --ff-only
-bash setup.sh
-EOF
-
-chmod +x /post_start.sh
-exec /start.sh
-'
+Important: we need to generate synthetic queries using gemini-2.0-flash. Since we do not have an API key, use a reasonable local model to do so instead. Note that a specific prompt was used in the paper to avoid queries from being too similar to the target movie:
 ```
-- **Environment Variables** (optional):
-  - `GIT_USER_NAME`: Your name for git commits
-  - `GIT_USER_EMAIL`: Your email for git commits
-
-The container will automatically:
-1. Clone the repo (first time only)
-2. Pull latest changes
-3. Run setup.sh (installs uv + dependencies)
-
-## After SSH-ing In
-
-Just `cd /workspace/experiments-penha-2025` and start working.
-
-## Git Credentials
-
-Credentials are cached for 7 days. On first push, you'll be prompted:
-
-```bash
-git push  # Enter GitHub username and Personal Access Token as password
-```
-
----
-
-## AI Research Skills Installation
-
-AI research skills provide expert guidance for common ML/AI tasks. Skills are installed as Claude Code plugins.
-
-### Step 1: Add the Marketplace
-
-```bash
-/plugin marketplace add orchestra-research/AI-research-SKILLs
-```
-
-### Step 2: Install by Category
-
-```bash
-/plugin install distributed-training@ai-research-skills
-/plugin install rag@ai-research-skills
-/plugin install mlops@ai-research-skills
-/plugin install fine-tuning@ai-research-skills
-/plugin install optimization@ai-research-skills
-/plugin install evaluation@ai-research-skills
-```
-
-### View All Available Skills
-
-See `references.md` for the complete list of 82 available skills organized by 20 categories.
-
-### Skills Source
-
-- Local clone: `AI-research-SKILLs/`
-- Documentation: https://www.orchestra-research.com/perspectives/ai-research-skills
-
----
-
-## Semantic ID Replication Project
-
-### Installation
-
-```bash
-cd /workspace/experiments-penha-2025
-
-# Install dependencies using uv
-uv sync
-
-# Install with dev dependencies (for testing)
-uv sync --extra dev
-```
-
-### Download Data
-
-```bash
-# Download MovieLens-25M dataset (~250MB compressed, ~1.1GB extracted)
-# Use workspace directory for persistence across restarts
-python scripts/download_data.py --output-dir /workspace/experiments-penha-2025/data/raw
-
-# Verify download
-ls /workspace/experiments-penha-2025/data/raw/ml-25m/
-# Should show: ratings.csv, movies.csv, links.csv, etc.
-```
-
-### Run Dev Experiment
-
-```bash
-# Run quick dev experiment (< 10 min)
-python scripts/run_dev.py --output-dir results/dev_run
-
-# With custom data fraction
-python scripts/run_dev.py --data-fraction 0.01 --output-dir results/dev_run
-```
-
-### Run Full Experiment
-
-```bash
-# Full experiment run (Ablation 1 + Ablation 2, 5 seeds each)
-# Estimated time: ~5 hours on A4500 GPU
-TOKENIZERS_PARALLELISM=false \
-HF_HOME=/workspace/experiments-penha-2025/.cache/huggingface \
-TRANSFORMERS_CACHE=/workspace/experiments-penha-2025/.cache/huggingface/transformers \
-TORCH_HOME=/workspace/experiments-penha-2025/.cache/torch \
-nohup python scripts/run_full.py \
-    --data-fraction 1.0 \
-    --n-seeds 5 \
-    --encoder-epochs 5 \
-    --gen-epochs 10 \
-    --output-dir /workspace/experiments-penha-2025/results/full_run \
-    > /workspace/experiments-penha-2025/results/full_run.log 2>&1 &
-
-# Monitor progress
-tail -f /workspace/experiments-penha-2025/results/full_run.log
-```
-
-### Run Tests
-
-```bash
-# Run all tests
-pytest tests/ -v
-
-# Run unit tests only
-pytest tests/unit/ -v
-
-# Run integration tests
-pytest tests/integration/ -v
-
-# Run with coverage
-pytest tests/ --cov=src --cov-report=term-missing
-```
-
-### Generate Queries
-
-```bash
-# Generate synthetic queries (fast, no LLM)
-python scripts/generate_queries.py --dev
-
-# Generate queries with LLM (requires GPU)
-python scripts/generate_queries.py --model Qwen/Qwen2.5-3B-Instruct
+Your task is to return a list with 10 queries for a given
+movie (title of the movie, year and description and tags) After generating the initial
+set of queries, you should also generate a list of the same size with paraphrased of the
+first queries. The paraphrased queries should be similar to the original queries, but with
+different words, structure and slight variations in the meaning. The queries should be
+realistic things that a user would ask to find the movie. The queries should be diverse and
+cover different aspects of the movie. The queries should not include the title of the movie,
+but be broader descriptions of the movie and its content. The queries should also contain
+broad topics, themes and genres of the movie. Movie: {METADATA}
 ```
